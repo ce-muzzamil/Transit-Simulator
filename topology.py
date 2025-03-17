@@ -3,15 +3,28 @@ from route import Route
 from node import Node
 
 class Topology:
+    """
+    This class represents the transit routes for a transit system. It has the following features.
+
+    * It generates a completely different topology for a given `seed` with different `Node`s and node attributes
+    * Given the `Node` attributes It can produce the OD matrix for a given time
+    """
     def __init__(self,
-                 min_num_stops_per_route = 8,
-                 max_num_stops_per_route = 32,
-                 min_num_route_per_toplogy = 4,
-                 max_num_route_per_toplogy = 12,
-                 hours_of_opperation_per_day = 18,
-                 analysis_period_sec = 60,
+                 min_num_stops_per_route : int = 8,
+                 max_num_stops_per_route : int = 32,
+                 min_num_route_per_toplogy : int = 4,
+                 max_num_route_per_toplogy : int = 12,
+                 hours_of_opperation_per_day : int = 18,
+                 analysis_period_sec : int = 60,
                  ) -> None:
-        
+        """
+        Argument:
+        --------
+        `[min,max]_num_stops_per_route` : is the upper and lower bound of nodes for each route
+        `[min,max]_num_route_per_toplogy` : is the upper and lower bound of routes for each topology
+        `hours_of_opperation_per_day` : is the maximum hours the buses will keep running
+        `analysis_period_sec` : is the least count of time
+        """
         self.min_num_stops_per_route = min_num_stops_per_route  
         self.max_num_stops_per_route = max_num_stops_per_route  
         self.min_num_route_per_toplogy = min_num_route_per_toplogy
@@ -26,7 +39,10 @@ class Topology:
         self.initiallize_traffic_data()
         
 
-    def fix_route_clusters(self):
+    def fix_route_clusters(self) -> None:
+        """
+        Fixes if there is discontinuity in the topology. It makes sure all the nodes are accessible to each other
+        """
         nodes = {}
         for (u, _, data) in self.topology.edges(data=True):
             if data["label"] not in nodes:
@@ -67,10 +83,29 @@ class Topology:
                 else:
                     self.topology.add_edge(max(uu, v), min(uu, v), label=data["label"])
             
-    def check_if_interval(self, time, interval):
+    def check_if_interval(self, time: int, interval: list) -> bool:
+        """
+        Argument:
+        --------
+        `time`: is the time is seconds starting from the first hour of the opperation to the last hour of opperation
+        `interval` is a list of fixed timestamps
+
+        Return:
+        ------
+        returns if the `time` belongs to the `interval` 
+        """
         return interval[0] <= time < interval[1]
 
-    def get_od_mat_for_time(self, time):
+    def get_od_mat_for_time(self, time: int) -> np.ndarray:
+        """
+        Argument:
+        --------
+        `time`: is the time is seconds starting from the first hour of the opperation to the last hour of opperation
+        
+        Return:
+        ------
+        od matrix of shape (NxN) where N is the number of nodes
+        """
         assert time < self.hours_of_opperation_per_day * 3600 and time > -1 and np.ceil(time) == np.floor(time)
         
         num_nodes = self.topology.number_of_nodes()
@@ -98,7 +133,14 @@ class Topology:
                   self.analysis_period_sec) * softmax(od_mat, axis=1) * self.traffic_curve[time]
         return od_mat
     
-    def generic_traffic_curve(self):
+    def generic_traffic_curve(self) -> np.ndarray:
+        """
+        This function creats a generalized traffic curve that the simulation will roughly follows
+
+        Returns:
+        -------
+        traffic volume at all the values of `time` 
+        """
         y = np.zeros(60*60*self.hours_of_opperation_per_day)
         y[:2*3600] = np.linspace(0,1,2*3600)
         y[2*3600:4*3600] = np.linspace(1,0.5,2*3600)
@@ -112,7 +154,10 @@ class Topology:
         y[mask] = np.linspace(0.1, y[~mask][0], mask.sum())
         return y
 
-    def initiallize_traffic_data(self):
+    def initiallize_traffic_data(self) -> None:
+        """
+        calls the `generic_traffic_curve` method with preloaded data
+        """
         num_nodes = self.topology.number_of_nodes()
         nodes_list = list(range(num_nodes))
         np.random.shuffle(nodes_list)
@@ -133,7 +178,10 @@ class Topology:
 
         self.traffic_curve = self.generic_traffic_curve()
         
-    def generate_od_routes(self):
+    def generate_od_routes(self) -> None:
+        """
+        Generates dict containing the shortest path calculated using `nx.shortest_path` between all the `node_ids` of `self.topology`
+        """
         self.od_routes = {}
         nodes = {node.node_id:node for node in self.nodes}
         node_ids = list(nodes.keys())
@@ -150,7 +198,10 @@ class Topology:
                 if node_id != node_id_2:
                     nodes[node_id].od_route[node_id_2] = self.od_routes[(node_id, node_id_2)]
         
-    def brush(self):
+    def brush(self) -> None:
+        """
+        Sequentially calls essential methods to generate topology
+        """
         self.check_connectivity()
         self.fix_zero_connectivity()
         self.check_connectivity()
@@ -167,7 +218,10 @@ class Topology:
         self.process_nodes_and_routes()
     
 
-    def process_nodes_and_routes(self):
+    def process_nodes_and_routes(self) -> None:
+        """
+        Updating `self.nodes` and `self.routes` using `self.topology.nodes` and `self.topology.edges`
+        """
         self.nodes = [node for node in self.nodes if node.node_id in self.topology.nodes]
         nodes = {node.node_id:node for node in self.nodes}
         self.routes = [Route(data["label"], nodes[u], nodes[v]) for u, v, data in self.topology.edges(data=True)]
@@ -202,7 +256,10 @@ class Topology:
                 if node.node_id == node_id:
                     node.zone = "residentials"
 
-    def get_graph(self):
+    def get_graph(self) -> None:
+        """
+        Generates `nx.Graph` using existing data in `self.nodes` and `self.routes`
+        """
         func = lambda route: zip(route[:-1], route[1:])
         routes = map(func, self.routes)
 
@@ -214,7 +271,10 @@ class Topology:
                 node_pair = max(*node_pair), min(*node_pair)
                 self.topology.add_edge(*node_pair, label=i)
 
-    def fix_splinter_issue(self):
+    def fix_splinter_issue(self) -> None:
+        """
+        Fixes the issue where an exit node exist just after the transfer node to simplify the topology
+        """
         tbr = []
         exit_nodes = [node_id for node_id, nbrs in self.neighbors.items() if len(nbrs)==1]
         for node_id, nbrs in self.neighbors.items():
@@ -229,7 +289,10 @@ class Topology:
         self.exit_nodes = [node_id for node_id, nbrs in self.neighbors.items() if len(nbrs)==1]
         self.transfer_nodes = [node_id for node_id, nbrs in self.neighbors.items() if len(nbrs)>2]
 
-    def drop_redundant_routes(self):
+    def drop_redundant_routes(self) -> None:
+        """
+        Solves the triangular connections and removing loops to simplify the topology
+        """
         tbr = []
         for route in self.r2r_connectivity.keys():
             if self.r2r_connectivity[route] > self.num_routes//2:
@@ -238,16 +301,25 @@ class Topology:
         for k in tbr:
             self.routes.remove(k)
                 
-    def find_neighbors(self):
+    def find_neighbors(self) -> None:
+        """
+        Searching for the neighbors for each node and storing them in `self.neighbors`
+        """
         self.neighbors = {}
         for node in self.topology.nodes:
             self.neighbors[node] = list(nx.neighbors(self.topology, node))
 
-    def remove_isolated_nodes(self):
+    def remove_isolated_nodes(self) -> None:
+        """
+        Removes nodes that are not connected to any other nodes
+        """
         isolated_nodes = nx.isolates(self.topology)
         self.topology.remove_nodes_from(list(isolated_nodes))
 
-    def generate_nodes(self):
+    def generate_nodes(self) -> None:
+        """
+        Generates nodes using uniform probability distribution given the min and max nodes per route and min and max routes per topology
+        """
         self.num_stations = np.random.randint(self.min_num_stops_per_route*self.min_num_route_per_toplogy, 
                                          self.max_num_stops_per_route*self.max_num_route_per_toplogy)
         
@@ -256,7 +328,10 @@ class Topology:
         for node_id in range(self.num_stations):
             self.nodes.append(Node(node_id=node_id))
             
-    def generate_routes(self):
+    def generate_routes(self) -> None:
+        """
+        Generates routes using generated nodes uisng conditionalized uniform probability distribution. 
+        """
         max_num_routes = min(self.num_stations//self.min_num_stops_per_route, self.max_num_route_per_toplogy)
         min_num_routes = max(self.num_stations//self.max_num_stops_per_route, self.min_num_route_per_toplogy)
         self.num_routes = np.random.randint(min_num_routes, max_num_routes)
@@ -286,7 +361,10 @@ class Topology:
             if len(route) >= self.min_num_stops_per_route:
                 self.routes.append(route)
 
-    def check_connectivity(self):
+    def check_connectivity(self) -> None:
+        """
+        checks which node of route_x is connectes to which node route_y
+        """
         self.r2r_transfer_nodes = {}
         self.r2r_connectivity = {route_id:0 for route_id in range(len(self.routes))}
         for i in range(len(self.routes)):
@@ -297,7 +375,10 @@ class Topology:
                     self.r2r_transfer_nodes[(u, v)] = node_connectivity
                     self.r2r_connectivity[i] += node_connectivity.any()
 
-    def fix_zero_connectivity(self):
+    def fix_zero_connectivity(self) -> None:
+        """
+        Connects isolated routes with a group of connected routes
+        """
         zero_connectivity_routes = [k for k, v in self.r2r_connectivity.items() if v==0]
         for z_route_id in zero_connectivity_routes:
             loc = np.random.randint(0, len(self.routes[z_route_id]))
@@ -310,15 +391,17 @@ class Topology:
             self.routes[z_route_id].insert(loc, v)
    
     def show(self, 
-             figsize=(8, 8),
-             node_color='lightblue',
-             node_size=800, 
-             font_size=10, 
-             show_label=None,
-             with_labels=True,
-             ax=None
-             ):
-        
+             figsize: tuple[int, int] = (8, 8),
+             node_color: str = 'lightblue',
+             node_size: int = 800, 
+             font_size: float = 10, 
+             show_label: bool | None = None,
+             with_labels: bool |None= True,
+             ax: object = None
+             ) -> None:
+        """
+        Displays the created topology using `nx.spring_layout`
+        """
         unique_labels = list(set(data["label"] for _, _, data in self.topology.edges(data=True)))
         colors = plt.get_cmap('tab10', len(unique_labels))
         label_color_map = {label: colors(i) for i, label in enumerate(unique_labels)}
@@ -348,7 +431,10 @@ class Topology:
         plt.title("Network Topology with Edge Groups Colored")
         plt.show()
 
-    def show_report(self):
+    def show_report(self) -> None:
+        """
+        Display report for the etire topology
+        """
         num_nodes = self.topology.number_of_nodes()
         num_exits = len(self.exit_nodes)
         num_transfers = len(self.transfer_nodes)

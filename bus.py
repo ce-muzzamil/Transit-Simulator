@@ -1,13 +1,28 @@
 from __init__ import *
 
 class Bus:
-    def __init__(self, capacity, 
-                 avg_speed, 
-                 service_route,
-                 step_interval,
-                 topology,
-                 reversed,
+    """
+    This class simulates a single bus in a transit system. It oppertares on a predefined subset of topology i.e., `route_id`.
+    if the route of `route_id` comprises if N number of stations then it wil start jouney from point S1 and end on S10. 
+    After this completion the bus will restart journey from S9 to S0. where S is the Sn is any station in the route.
+    """
+    def __init__(self, 
+                 capacity: int, 
+                 avg_speed: float, 
+                 service_route: int,
+                 step_interval: int,
+                 topology: Topology,
+                 reversed: bool,
                  ):
+        """
+        Arguments:
+        ---------
+        `capacity`: is the number of passengers that the bus can carry
+        `avg_speed: is the average speed the bus is going to have during motion`
+        `service_route`: is the id of the predifined subsets of the `topology`
+        `topology`: is the instance of `Topology` class that represents the transit system
+        `reversed`: is the boolen defining the direction of bus. i.e., A->B or B->A
+        """
         self.capacity = capacity
         self.avg_speed = avg_speed
         self.speed = avg_speed #kmph
@@ -30,6 +45,12 @@ class Bus:
         self.initilize_trajectory()
         
     def initilize_trajectory(self):
+        """
+        This methods is called every time the bus' trajectory needs initilization. 
+        The methods initlizes the tragectory `self.to_go` based on the `reversed` flag. 
+        The trajectory is the itinerary (an ordered list) for the bus that includes all the nodes the bus is going to visit.
+        Based on this list and the `Node` data and the traectory, this method calculates the distances between all the `to_go` nodes.     
+        """
         if self.reversed:
             self.routes = self.routes[::-1]
             current_node_id = min(self.exit_nodes)
@@ -57,12 +78,34 @@ class Bus:
         
         self.distance_next_node = self.distances.pop(0)
 
-    def get_node_by_id(self, id):
+    def get_node_by_id(self, id: int) -> Node:
+        """
+        To get the instance of `Node` given the `node_id` in the topology
+
+        Argument:
+        --------
+        id: is the node id of the transit station: `Node`
+
+        Return:
+        ------
+        Transit Station: `Node`
+        """
         for node in self.topology.nodes:
             if node.node_id == id:
                 return node
             
-    def step(self, time):
+    def step(self, time: int):
+        """
+        A method that will be repeatedly called to perform opperations like.
+        1- To record instantaneous location
+        2- To record instantaneous speed
+        3- To call the `step` method of the `Node` it crosses
+        4- To change the state of `reversed` flag if the last stops is reached
+
+        Argument:
+        `time`: is the time is seconds starting from the first hour of the opperation to the last hour of opperation
+        
+        """
         self.speed = max(5, self.avg_speed + np.random.normal(loc=0, scale=20))
         self.distance_next_node -= self.speed * self.step_interval
         if self.distance_next_node <= 0:

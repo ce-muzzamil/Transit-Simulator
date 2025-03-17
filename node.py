@@ -1,13 +1,29 @@
 from __init__ import *
-from passenger import Passenger
 
 class Node:
+    """
+    This class represents the transit station. It has following features
+    1- Population density (chosen randomly using normal distribution with mu=300 persons/km and std=200 persons/km and the lower bound is clipped with min=100)
+    2- Area (chosen randomly using normal distribution with mean = 2 km radius and std = 1 square km and the lower bound is clipped with min=0.5 km radius)
+    3- Population (calculated using population density)
+    4- The proportion of Transit users (randomly assigned using a modified probability distribution)
+
+    Other parametres:
+    ----------------
+    `affiliated routes` is the set of routes that contain this `Node`
+    `zone type` is used by the `Topology` class to produce the OD matrix for departures and arrivals
+    """
     def __init__(self,
-                 node_id=None) -> None:
-        
+                 node_id: int | None = None) -> None:
+        """
+        Argument:
+        --------
+
+        `node_id` is the integer value and the value of the station as represented in the `Topology.topology : nx.Graph`
+        """
         self.node_id = int(node_id)
         self.population_density_ppkm2 = max(np.random.normal(loc=300, scale=200), 100)
-        self.catchment_area_km2 = np.random.normal(loc = 4*np.pi, scale = np.pi)
+        self.catchment_area_km2 = max(np.random.normal(loc = 4*np.pi, scale = np.pi), 0.25*np.pi)
         self.population = self.population_density_ppkm2 * self.catchment_area_km2
         self.population_proportion_using_transit = np.random.choice(np.linspace(0.05, 0.3, 1000), 
                                                                     p=softmax(np.linspace(4, -4, 1000), axis=0))
@@ -69,7 +85,19 @@ class Node:
                 
     #     return transfers
 
-    def check_transfers(self, destination):
+    def check_transfers(self, destination: Node) -> list[Node]:
+        """
+        It takes in the destination node and calculates the trajectory to be followed. 
+        It finally extract the transfer nodes and return a list of transfers.
+
+        Argument:
+        --------
+        `destination` is a `Node` for where the used wants to go
+
+        Return:
+        ------
+        A List of `Nodes` that will work as trander nodes in this travel
+        """
         path = self.od_route[destination.node_id]        
         
         # Extract affiliated route IDs or None if more than 2 routes exist
@@ -100,13 +128,27 @@ class Node:
 
         return transfers
 
-    def step(self, time, to_depart, all_nodes):
+    def step(self, time: int, to_depart: np.ndarray, all_nodes:dict[int, Node]) -> None:
+        """
+        A step function that will be called repeatedly as the time progresses.
+        This method performs following functionalities
+
+        1- Generate passengers based on th `to_depart` which is a function of time
+        2- Create a `Passenger` instance and initilize precalculate it trajectory/journey
+
+        Argument:
+        --------
+        `time`: is the time is seconds starting from the first hour of the opperation to the last hour of opperation
+        `to_depart`: is calculted by the `Topology` object and is a od-matrix with origin being this `Node` and destination being all the other `Node`s is `Topology`
+        `all_nodes`: is a dict of all the `Node`s in the repo with `node_id` as key and `Node` itself as value
+        
+        """
         for i in range(len(to_depart)):
             if i not in self.temp_waiting_passengers:
                 self.temp_waiting_passengers[i] = 0
             self.temp_waiting_passengers[i] += to_depart[i]
 
-        num_passengers = {k:int(v) for k,v in self.temp_waiting_passengers.items() if int(v) > 0}
+        num_passengers = {k:int(v) for k, v in self.temp_waiting_passengers.items() if int(v) > 0}
         for k, v in num_passengers.items():
             if v > 0:
                 self.temp_waiting_passengers[k] -= v
@@ -116,7 +158,18 @@ class Node:
                                                      queued_since=time,
                                                      transfers=self.check_transfers(all_nodes[k])))
                     
-    def bus_arrived(self, time, bus):
+    def bus_arrived(self, time:int, bus: Bus) -> None:
+        """
+        This function does the following:
+        1- transfer passengers having destination or tranfer in the `bus.to_go` to the `bus`
+        2- change the status i.e, `waiting time`, `is aboard` etc., of the passengers accordingly
+        3- transfer passengers from the `bus` to the `Node` if the `Node` is destination of transfer
+
+        Argument:
+        --------
+        `time`: is the time is seconds starting from the first hour of the opperation to the last hour of opperation
+        `bus`: is the instance of the bus thatust crosses this `Node`
+        """
         to_drop = []
         for passenger in bus.passengers:
             if passenger.destination == self:
@@ -157,4 +210,7 @@ class Node:
                             passenger.is_dropped = False
                 
     def __repr__(self):
+        """
+        Override the to_string functionality
+        """
         return f"Node {self.node_id} population: {int(self.population)} transit users: {int(self.transit_users)}"

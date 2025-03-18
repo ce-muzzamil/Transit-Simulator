@@ -1,4 +1,10 @@
-from __init__ import *
+import numpy as np
+from typing import Self, TYPE_CHECKING
+from passenger import Passenger
+from functions import softmax
+
+if TYPE_CHECKING:
+    from bus import Bus
 
 class Node:
     """
@@ -39,7 +45,7 @@ class Node:
 
         self.stranding_passengers = 0
         self.average_waiting_time = 0
-        self.passengers = []
+        self.passengers : list[Passenger] = []
         
     # def check_transfers(self, destination):
     #     path = self.od_route[destination.node_id]        
@@ -85,7 +91,7 @@ class Node:
                 
     #     return transfers
 
-    def check_transfers(self, destination: Node) -> list[Node]:
+    def check_transfers(self, destination: Self) -> list[Self]:
         """
         It takes in the destination node and calculates the trajectory to be followed. 
         It finally extract the transfer nodes and return a list of transfers.
@@ -128,7 +134,7 @@ class Node:
 
         return transfers
 
-    def step(self, time: int, to_depart: np.ndarray, all_nodes:dict[int, Node]) -> None:
+    def step(self, time: int, to_depart: np.ndarray, all_nodes:dict[int, Self]) -> None:
         """
         A step function that will be called repeatedly as the time progresses.
         This method performs following functionalities
@@ -158,7 +164,7 @@ class Node:
                                                      queued_since=time,
                                                      transfers=self.check_transfers(all_nodes[k])))
                     
-    def bus_arrived(self, time:int, bus: Bus) -> None:
+    def bus_arrived(self, time:int, bus: Bus) -> list[Passenger]:
         """
         This function does the following:
         1- transfer passengers having destination or tranfer in the `bus.to_go` to the `bus`
@@ -169,6 +175,10 @@ class Node:
         --------
         `time`: is the time is seconds starting from the first hour of the opperation to the last hour of opperation
         `bus`: is the instance of the bus thatust crosses this `Node`
+        
+        Returns:
+        list of passengers that have reached destination
+        
         """
         to_drop = []
         for passenger in bus.passengers:
@@ -181,12 +191,12 @@ class Node:
             else:
                 for transfer in passenger.transfers:
                     if transfer == self:
-                        passenger.is_dropped = True
+                        passenger.is_dropped = False
                         passenger.travel_time += time - passenger.queued_since
                         passenger.queued_since = time
                         passenger.is_aboard = False
-                        to_drop.append(passenger)
                         self.passengers.append(passenger)
+                        to_drop.append(passenger)
                         passenger.transfers.remove(transfer)
 
         for passenger in to_drop:
@@ -208,6 +218,8 @@ class Node:
                             passenger.queued_since = time
                             bus.passengers.append(passenger)
                             passenger.is_dropped = False
+        
+        return to_drop
                 
     def __repr__(self):
         """

@@ -1,4 +1,7 @@
-from __init__ import *
+import numpy as np
+from topology import Topology
+from bus import Bus
+from logger import PassengerLogger
 
 class TransitSystem:
     "Representation of a public transit system"
@@ -39,6 +42,7 @@ class TransitSystem:
                           ) for _ in range(num_busses_per_route)]) for i in range(len(set([r.route_id for r in self.topology.routes])))]
     
         self.buses = sum(self.buses, [])
+        self.passenger_logger = PassengerLogger("passenger_logs.csv")
         
     def step(self, time) ->None:
         """
@@ -54,4 +58,7 @@ class TransitSystem:
             node.step(time, to_depart=od_mat[i, :], all_nodes=self.topology.nodes)
         
         for i, bus in enumerate(self.buses):
-            bus.step(time)
+            passengers = bus.step(time)
+            for passenger in passengers:
+                self.passenger_logger.add_to_pool(**passenger.to_dct())
+                self.passenger_logger.commit()

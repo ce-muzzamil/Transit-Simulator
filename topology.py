@@ -1,6 +1,10 @@
-from __init__ import *
-from route import Route
+import numpy as np
+import pandas as pd
 from node import Node
+from route import Route
+from matplotlib import pyplot as plt
+import networkx as nx
+from functions import softmax
 
 class Topology:
     """
@@ -222,9 +226,9 @@ class Topology:
         """
         Updating `self.nodes` and `self.routes` using `self.topology.nodes` and `self.topology.edges`
         """
-        self.nodes = [node for node in self.nodes if node.node_id in self.topology.nodes]
+        self.nodes : list[Node] = [node for node in self.nodes if node.node_id in self.topology.nodes]
         nodes = {node.node_id:node for node in self.nodes}
-        self.routes = [Route(data["label"], nodes[u], nodes[v]) for u, v, data in self.topology.edges(data=True)]
+        self.routes : list[Route] = [Route(data["label"], nodes[u], nodes[v]) for u, v, data in self.topology.edges(data=True)]
         self.transit_users = np.array([node.transit_users for node in self.nodes])
 
         for node in self.nodes:

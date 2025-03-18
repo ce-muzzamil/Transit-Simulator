@@ -1,4 +1,5 @@
-from __init__ import *
+import numpy as np
+from node import Node
 
 class Route:
     """

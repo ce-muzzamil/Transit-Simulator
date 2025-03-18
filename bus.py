@@ -1,4 +1,8 @@
-from __init__ import *
+import numpy as np
+from topology import Topology
+from node import Node
+from passenger import Passenger
+import networkx as nx
 
 class Bus:
     """
@@ -41,7 +45,7 @@ class Bus:
         self.exit_nodes = [node_id for node_id in nodes_ids if len(self.neighbors[node_id]) == 1]
         self.routes = [route for route in self.topology.routes if route.route_id == self.service_route]
 
-        self.passengers = []
+        self.passengers : list[Passenger] = []
         self.initilize_trajectory()
         
     def initilize_trajectory(self):
@@ -94,7 +98,7 @@ class Bus:
             if node.node_id == id:
                 return node
             
-    def step(self, time: int):
+    def step(self, time: int)  -> list[Passenger]:
         """
         A method that will be repeatedly called to perform opperations like.
         1- To record instantaneous location
@@ -105,13 +109,16 @@ class Bus:
         Argument:
         `time`: is the time is seconds starting from the first hour of the opperation to the last hour of opperation
         
+        Returns:
+        list of passengers that have reached destination
         """
+        to_drop = []
         self.speed = max(5, self.avg_speed + np.random.normal(loc=0, scale=20))
         self.distance_next_node -= self.speed * self.step_interval
         if self.distance_next_node <= 0:
 
             current_node = self.to_go.pop(0)
-            current_node.bus_arrived(time, self)
+            to_drop = current_node.bus_arrived(time, self)
             if len(self.distances)>0:
                 distance_next_node = self.distances.pop(0)
                 self.distance_next_node = distance_next_node - abs(self.distance_next_node)
@@ -121,3 +128,5 @@ class Bus:
         if len(self.to_go) == 0:
             self.reversed = not self.reversed
             self.initilize_trajectory()
+        
+        return to_drop

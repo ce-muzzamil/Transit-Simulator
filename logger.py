@@ -6,16 +6,27 @@ from __init__ import *
 class PassengerLogger:
     def __init__(self, path:str):
         self.path = path
-        self.fields = ('''origin
+        os.makedirs(self.path, exist_ok=True)
+        self.path = os.path.join(self.path, "passenger_logs.csv")
+
+        self.fields = ('''seed
+                       time
+                       origin
                        destination
                        num_transfers
                        transfers
                        waiting_time
                        travel_time
-                       ''').split('\n')
+                       stranding_counts
+                       distance_traversed
+                       num_stations_traversed
+                       average_travel_speed
+                       total_time_taken''').split('\n')
         
         self.fields = [x.strip() for x in self.fields]
-        self.write()
+        if not os.path.isfile(self.path):
+            self.write()
+            
         self.reset_pool()
 
     def write(self) -> None:

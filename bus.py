@@ -73,7 +73,7 @@ class Bus:
                     node_u = next_node
                     break
 
-        self.distances = []
+        self.distances = [0]
         for node_pair in zip(self.to_go[:-1], self.to_go[1:]):
             for route in self.routes:
                 if  all([node in route.node_pair for node in node_pair]):
@@ -113,20 +113,18 @@ class Bus:
         list of passengers that have reached destination
         """
         to_drop = []
-        self.speed = max(5, self.avg_speed + np.random.normal(loc=0, scale=20))
-        self.distance_next_node -= self.speed * self.step_interval
         if self.distance_next_node <= 0:
-
             current_node = self.to_go.pop(0)
             to_drop = current_node.bus_arrived(time, self)
             if len(self.distances)>0:
                 distance_next_node = self.distances.pop(0)
-                self.distance_next_node = distance_next_node - abs(self.distance_next_node)
-            else:
-                self.distance_next_node = -np.inf
+                self.distance_next_node = distance_next_node - abs(self.distance_next_node)      
 
         if len(self.to_go) == 0:
             self.reversed = not self.reversed
             self.initilize_trajectory()
+        
+        self.speed = min(max(5.56, self.avg_speed + np.random.normal(loc=0, scale=10)), 33.34)
+        self.distance_next_node -= self.speed * self.step_interval
         
         return to_drop

@@ -20,6 +20,17 @@ class Topology:
                  max_num_route_per_toplogy : int = 12,
                  hours_of_opperation_per_day : int = 18,
                  analysis_period_sec : int = 60,
+                 mean_population_density: float = 300.,
+                 std_population_density: float = 200.,
+                 min_population_density: float = 100.,
+                 mean_catchment_radius: float = 2.,
+                 std_catchment_radius: float = 1.,
+                 min_catchment_radius: float = 0.5,
+                 min_transit_users_proportion: float = 0.05,
+                 max_transit_users_proportion: float = 0.3,
+                 min_distance: float = 2500,
+                 max_distance: float = 10000,
+                 seed: int = 0,
                  ) -> None:
         """
         Argument:
@@ -28,6 +39,16 @@ class Topology:
         `[min,max]_num_route_per_toplogy` : is the upper and lower bound of routes for each topology
         `hours_of_opperation_per_day` : is the maximum hours the buses will keep running
         `analysis_period_sec` : is the least count of time
+        `mean_population_density`: is the mean population density of catchment area of each station
+        `std_population_density`: is the standrd deviation of population density of catchment area of each station
+        `min_population_density`: is the lowerbound to clip smaller values for the population density of catchment area of each station
+        `mean_catchment_radius`: is the mean area of the catchment area of each station
+        `std_catchment_radius`: is the standard deviation area of the catchment area of each station
+        `min_catchment_radius`: is the lowerbound to clip smaller values for the area of catchment area of each station
+        `min_transit_users_proportion`: is the minimum ratio of transit users given the population for a station
+        `max_transit_users_proportion`: is the maximum ration of transit users given the population for a station
+        `min_distance`: is the minumum distance between neighbouring nodes
+        `max_distance`: is the maximum distance between neighbouring nodes
         """
         self.min_num_stops_per_route = min_num_stops_per_route  
         self.max_num_stops_per_route = max_num_stops_per_route  
@@ -35,6 +56,18 @@ class Topology:
         self.max_num_route_per_toplogy = max_num_route_per_toplogy
         self.hours_of_opperation_per_day = hours_of_opperation_per_day
         self.analysis_period_sec = analysis_period_sec
+
+        self.mean_population_density = mean_population_density
+        self.std_population_density = std_population_density
+        self.min_population_density = min_population_density
+        self.mean_catchment_radius = mean_catchment_radius
+        self.std_catchment_radius = std_catchment_radius
+        self.min_catchment_radius = min_catchment_radius
+        self.min_transit_users_proportion = min_transit_users_proportion
+        self.max_transit_users_proportion = max_transit_users_proportion
+        self.min_distance = min_distance
+        self.max_distance = max_distance
+        self.seed = seed
 
         self.generate_nodes()
         self.generate_routes()
@@ -228,7 +261,9 @@ class Topology:
         """
         self.nodes : list[Node] = [node for node in self.nodes if node.node_id in self.topology.nodes]
         nodes = {node.node_id:node for node in self.nodes}
-        self.routes : list[Route] = [Route(data["label"], nodes[u], nodes[v]) for u, v, data in self.topology.edges(data=True)]
+        self.routes : list[Route] = [Route(data["label"], nodes[u], nodes[v], 
+                                           min_distance=self.min_distance, 
+                                           max_distance=self.max_distance) for u, v, data in self.topology.edges(data=True)]
         self.transit_users = np.array([node.transit_users for node in self.nodes])
 
         for node in self.nodes:
@@ -330,7 +365,15 @@ class Topology:
 
         self.nodes = []
         for node_id in range(self.num_stations):
-            self.nodes.append(Node(node_id=node_id))
+            self.nodes.append(Node(node_id=node_id,
+                                   mean_population_density = self.mean_population_density,
+                                   std_population_density = self.std_population_density,
+                                   min_population_density = self.min_population_density,
+                                   mean_catchment_radius = self.mean_catchment_radius,
+                                   std_catchment_radius = self.std_catchment_radius,
+                                   min_catchment_radius = self.min_catchment_radius,
+                                   min_transit_users_proportion = self.min_transit_users_proportion,
+                                   max_transit_users_proportion = self.max_transit_users_proportion))
             
     def generate_routes(self) -> None:
         """
@@ -409,7 +452,7 @@ class Topology:
         unique_labels = list(set(data["label"] for _, _, data in self.topology.edges(data=True)))
         colors = plt.get_cmap('tab10', len(unique_labels))
         label_color_map = {label: colors(i) for i, label in enumerate(unique_labels)}
-        pos = nx.spring_layout(self.topology)
+        pos = nx.spring_layout(self.topology, seed=self.seed)
 
         plt.figure(figsize=figsize)
         nx.draw(self.topology, 

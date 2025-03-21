@@ -118,18 +118,19 @@ class TransitSystem:
         `time`: is the time is seconds starting from the first hour of the opperation to the last hour of opperation
         `passenger`: instance of `Passenger` class that has finished journey
         """
-        path = passenger.path
-        distances = []
-        for u, v in zip(path[:-1], path[1:]):
-            for route in self.topology.routes:
-                if u.node_id in route.node_pair_id and v.node_id in route.node_pair_id:
-                    distances.append(route.distance)
+        if passenger.travel_time != 0:
+            path = passenger.path
+            distances = []
+            for u, v in zip(path[:-1], path[1:]):
+                for route in self.topology.routes:
+                    if u.node_id in route.node_pair_id and v.node_id in route.node_pair_id:
+                        distances.append(route.distance)
 
-        passenger.distance_traversed = np.sum(distances)
-        passenger.total_time_taken = time - passenger.started_at
-        passenger.average_travel_speed = (
-            passenger.distance_traversed / passenger.travel_time
-        )
+            passenger.distance_traversed = np.sum(distances)
+            passenger.total_time_taken = time - passenger.started_at
+            passenger.average_travel_speed = (
+                passenger.distance_traversed / passenger.travel_time
+            )
 
     def step(self, time) -> None:
         """

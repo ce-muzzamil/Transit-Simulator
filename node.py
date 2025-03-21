@@ -182,14 +182,22 @@ class Node:
         Returns:
         list of passengers that have reached destination
         """
-        to_drop = []
+        
+        to_drop : list[Passenger] = []
+        to_drop_from_bus: list[Passenger] = []
+
         for passenger in bus.passengers:
             if passenger.destination == self:
                 passenger.is_dropped = True
                 passenger.travel_time += time - passenger.queued_since
                 passenger.queued_since = time
+                passenger.bus_ids.append(bus.ID)
+                passenger.route_ids.append(bus.service_route)
+                passenger.time_history.append(time)
+                passenger.drop_offs.append(self.node_id)
                 passenger.is_aboard = False
                 to_drop.append(passenger)
+                
             else:
                 to_drop_first_transfer: list[Passenger] = []
                 for transfer in passenger.transfers:
@@ -198,23 +206,31 @@ class Node:
                         passenger.travel_time += time - passenger.queued_since
                         passenger.queued_since = time
                         passenger.is_aboard = False
+                        passenger.bus_ids.append(bus.ID)
+                        passenger.route_ids.append(bus.service_route)
+                        passenger.time_history.append(time)  
+                        passenger.drop_offs.append(self.node_id)                         
                         self.passengers.append(passenger)
-                        to_drop.append(passenger)
+                        to_drop_from_bus.append(passenger)
                         to_drop_first_transfer.append(passenger)
 
                 for passenger in to_drop_first_transfer:
                     passenger.transfers.pop(0)
 
-        for passenger in to_drop:
+        for passenger in to_drop + to_drop_from_bus:
             bus.passengers.remove(passenger)
 
-        aboard = []
+        aboard: list[Passenger] = []
         for passenger in self.passengers:
             if len(bus.passengers) < bus.capacity:
                 if passenger.destination in bus.to_go:
                     passenger.is_aboard = True
                     passenger.waiting_time += time - passenger.queued_since
-                    passenger.queued_since = time                    
+                    passenger.queued_since = time
+                    passenger.bus_ids.append(bus.ID)
+                    passenger.route_ids.append(bus.service_route)
+                    passenger.time_history.append(time) 
+                    passenger.drop_offs.append(self.node_id)                 
                     bus.passengers.append(passenger)
                     passenger.is_dropped = False
                     aboard.append(passenger)
@@ -224,6 +240,10 @@ class Node:
                             passenger.is_aboard = True
                             passenger.waiting_time += time - passenger.queued_since
                             passenger.queued_since = time
+                            passenger.bus_ids.append(bus.ID)
+                            passenger.route_ids.append(bus.service_route)
+                            passenger.time_history.append(time)
+                            passenger.drop_offs.append(self.node_id)
                             bus.passengers.append(passenger)
                             passenger.is_dropped = False
                             aboard.append(passenger)

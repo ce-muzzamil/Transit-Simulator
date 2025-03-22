@@ -77,8 +77,6 @@ class Node:
         self.od_route = {}
         self.temp_waiting_passengers = {}
 
-        self.stranding_passengers = 0
-        self.average_waiting_time = 0
         self.passengers: list[Passenger] = []
 
     def check_transfers(self, destination: Self) -> list[Self]:
@@ -188,28 +186,16 @@ class Node:
 
         for passenger in bus.passengers:
             if passenger.destination == self:
-                passenger.is_dropped = True
                 passenger.travel_time += time - passenger.queued_since
                 passenger.queued_since = time
-                passenger.bus_ids.append(bus.ID)
-                passenger.route_ids.append(bus.service_route)
-                passenger.time_history.append(time)
-                passenger.drop_offs.append(self.node_id)
-                passenger.is_aboard = False
                 to_drop.append(passenger)
                 
             else:
                 to_drop_first_transfer: list[Passenger] = []
                 for transfer in passenger.transfers:
                     if transfer == self:
-                        passenger.is_dropped = False
                         passenger.travel_time += time - passenger.queued_since
                         passenger.queued_since = time
-                        passenger.is_aboard = False
-                        passenger.bus_ids.append(bus.ID)
-                        passenger.route_ids.append(bus.service_route)
-                        passenger.time_history.append(time)  
-                        passenger.drop_offs.append(self.node_id)                         
                         self.passengers.append(passenger)
                         to_drop_from_bus.append(passenger)
                         to_drop_first_transfer.append(passenger)
@@ -224,28 +210,16 @@ class Node:
         for passenger in self.passengers:
             if len(bus.passengers) < bus.capacity:
                 if passenger.destination in bus.to_go:
-                    passenger.is_aboard = True
                     passenger.waiting_time += time - passenger.queued_since
                     passenger.queued_since = time
-                    passenger.bus_ids.append(bus.ID)
-                    passenger.route_ids.append(bus.service_route)
-                    passenger.time_history.append(time) 
-                    passenger.drop_offs.append(self.node_id)                 
                     bus.passengers.append(passenger)
-                    passenger.is_dropped = False
                     aboard.append(passenger)
                 else:
                     for transfer in passenger.transfers:
                         if transfer in bus.to_go:
-                            passenger.is_aboard = True
                             passenger.waiting_time += time - passenger.queued_since
                             passenger.queued_since = time
-                            passenger.bus_ids.append(bus.ID)
-                            passenger.route_ids.append(bus.service_route)
-                            passenger.time_history.append(time)
-                            passenger.drop_offs.append(self.node_id)
                             bus.passengers.append(passenger)
-                            passenger.is_dropped = False
                             aboard.append(passenger)
             else:
                 if passenger.destination in bus.to_go:

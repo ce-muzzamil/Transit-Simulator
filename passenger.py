@@ -42,17 +42,11 @@ class Passenger:
         self.stranding_counts = 0
         self.travel_time = 0
 
-        self.is_aboard = False
-        self.is_dropped = False
         self.path = path
         self.distance_traversed: float = 0.0
         self.num_stations_traversed: int = len(path)
         self.average_travel_speed: float = 0.0
         self.total_time_taken: float = 0.0
-        self.bus_ids = []
-        self.route_ids = []
-        self.time_history = []
-        self.drop_offs = []
 
     def to_dct(self) -> dict:
         """

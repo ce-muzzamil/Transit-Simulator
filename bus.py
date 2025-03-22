@@ -45,6 +45,7 @@ class Bus:
             for route in self.topology.routes
             if route.route_id == self.service_route
         ]
+
         nodes_ids = list(set(sum(nodes_ids, [])))
         self.num_stations_in_trajectory = len(nodes_ids)
 
@@ -52,9 +53,11 @@ class Bus:
         self.neighbors = {
             node: list(nx.neighbors(subgraph, node)) for node in nodes_ids
         }
+
         self.exit_nodes = [
             node_id for node_id in nodes_ids if len(self.neighbors[node_id]) == 1
         ]
+        
         self.routes = [
             route
             for route in self.topology.routes

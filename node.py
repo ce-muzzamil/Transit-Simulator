@@ -70,14 +70,23 @@ class Node:
 
         self.transit_users = self.population * self.population_proportion_using_transit
 
-        self.affiliated_routes = set()
+        self.affiliated_routes = set() #all the routes the node is attached to (can provide info on the associated route id and if it's transfer)
+        self.exit_nodes : list[int] = []
         self.is_exit = False
         self.is_transfer = False
         self.zone_type = "residential"
-        self.od_route = {}
+        self.od_route = {} #shortest path to all the other nodes in the topology
+        self.od_distance: dict[int, float] = {}
         self.temp_waiting_passengers = {}
 
         self.passengers: list[Passenger] = []
+
+        self.arrivals: int = 0
+        self.departures: int = 0
+        self.avg_waiting_time: float = 0.0
+        self.avg_stranding_counts: float = 0.0
+        self.time_of_last_bus: int = 0
+        self.step_counter: int = 0
 
     def check_transfers(self, destination: Self) -> list[Self]:
         """
@@ -165,6 +174,11 @@ class Node:
                         )
                     )
 
+        self.step_counter += 1
+        self.avg_waiting_time += np.mean([passenger.waiting_time for passenger in self.passengers])
+        self.avg_stranding_counts += np.mean([passenger.stranding_counts for passenger in self.passengers])
+        
+
     def bus_arrived(self, time: int, bus: Bus) -> list[Passenger]:
         """
         This function does the following:
@@ -205,6 +219,7 @@ class Node:
 
         for passenger in to_drop + to_drop_from_bus:
             bus.passengers.remove(passenger)
+            self.arrivals += 1
 
         aboard: list[Passenger] = []
         for passenger in self.passengers:
@@ -231,8 +246,49 @@ class Node:
 
         for passenger in aboard:
             self.passengers.remove(passenger)
-
+            self.departures += 1
+        
+        self.time_of_last_bus = time
         return to_drop
+    
+
+    def get_dct(self) -> dict:
+        """
+        This function returns the dictionary of the `Node` object
+        containing the following information:
+        1- population density
+        2- catchment area
+        3- population
+        4- proportion of transit users
+        5- is transfer
+        6- min distance from the exit node of the route
+        7- max distance from the exit node of the route (in case of transfer node all the connecting routes will be considered)
+        8- average arrivals
+        9- average departures
+        10- average waiting time
+        11- average stranding counts
+        12- time elapsed since last bus
+        13- number of waiting passengers
+        14- number of stranding passengers
+        """
+
+        return {
+            "population_density": self.population_density_ppkm2,
+            "catchment_area": self.catchment_area_km2,
+            "population": self.population,
+            "transit_users": self.transit_users,
+            "is_transfer": self.is_transfer,
+            "min_distance_from_exit_node": min([self.od_distance[exit_node] for exit_node in self.exit_nodes]),
+            "max_distance_from_exit_node": max([self.od_distance[exit_node] for exit_node in self.exit_nodes]),
+            "average_arrivals": self.arrivals/self.step_counter,
+            "average_departures": self.departures/self.step_counter,
+            "average_waiting_time": self.avg_waiting_time/self.step_counter,
+            "average_stranding_counts": self.avg_stranding_counts/self.step_counter,
+            "time_elapsed_since_last_bus": self.step_counter - self.time_of_last_bus,
+            "number_of_waiting_passengers": len(self.passengers),
+            "number_of_stranding_passengers": len([passenger for passenger in self.passengers if passenger.stranding_counts>0]),
+        }
+
 
     def __repr__(self):
         """

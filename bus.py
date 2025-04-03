@@ -38,6 +38,8 @@ class Bus:
         self.location = 0.0
         self.step_interval = step_interval
         self.reversed = reversed
+        self.total_distance_traversed = 0
+        self.num_passengers_served = 0
 
         self.topology = topology
         nodes_ids = [
@@ -49,7 +51,7 @@ class Bus:
         nodes_ids = list(set(sum(nodes_ids, [])))
         self.num_stations_in_trajectory = len(nodes_ids)
 
-        subgraph = self.topology.topology.subgraph(nodes_ids)
+        subgraph: nx.Graph = self.topology.topology.subgraph(nodes_ids)
         self.neighbors = {
             node: list(nx.neighbors(subgraph, node)) for node in nodes_ids
         }
@@ -57,7 +59,7 @@ class Bus:
         self.exit_nodes = [
             node_id for node_id in nodes_ids if len(self.neighbors[node_id]) == 1
         ]
-        
+
         self.routes = [
             route
             for route in self.topology.routes
@@ -66,6 +68,7 @@ class Bus:
 
         self.passengers: list[Passenger] = []
         self.initilize_trajectory()
+        self.done = False
 
     def initilize_trajectory(self):
         """
@@ -131,10 +134,11 @@ class Bus:
         Returns:
         list of passengers that have reached destination
         """
+
         to_drop = []
         if self.distance_next_node <= 0:
-            current_node = self.to_go.pop(0)
-            to_drop = current_node.bus_arrived(time, self)
+            self.current_node = self.to_go.pop(0)
+            to_drop = self.current_node.bus_arrived(time, self)
             if len(self.distances) > 0:
                 distance_next_node = self.distances.pop(0)
                 self.distance_next_node = distance_next_node - abs(
@@ -142,12 +146,18 @@ class Bus:
                 )
 
         if len(self.to_go) == 0:
-            self.reversed = not self.reversed
-            self.initilize_trajectory()
+        #     self.reversed = not self.reversed
+        #     self.initilize_trajectory()
+            self.done = True
+            return to_drop
+
+
 
         self.speed = min(
             max(5.56, self.avg_speed + np.random.normal(loc=0, scale=10)), 33.34
         )
         self.distance_next_node -= self.speed * self.step_interval
+        self.total_distance_traversed += self.speed * self.step_interval
+        self.num_passengers_served += len(to_drop)
 
         return to_drop

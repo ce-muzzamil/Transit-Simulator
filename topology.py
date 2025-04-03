@@ -75,7 +75,7 @@ class Topology:
         self.generate_od_routes()
         self.initiallize_traffic_data()
         
-
+    
     def fix_route_clusters(self) -> None:
         """
         Fixes if there is discontinuity in the topology. It makes sure all the nodes are accessible to each other
@@ -233,7 +233,16 @@ class Topology:
         for node_id in nodes.keys():
             for node_id_2 in nodes.keys():
                 if node_id != node_id_2:
-                    nodes[node_id].od_route[node_id_2] = self.od_routes[(node_id, node_id_2)]
+                    path = self.od_routes[(node_id, node_id_2)]
+                    nodes[node_id].od_route[node_id_2] = path
+                    
+                    distance = 0.0
+                    for route in self.routes:
+                        for u, v in zip(path[:-1], path[1:]):
+                            if u in route.node_pair_id and v in route.node_pair_id:
+                                distance += route.distance
+                    nodes[node_id].od_distance[node_id_2] = distance
+
         
     def brush(self) -> None:
         """
@@ -294,6 +303,17 @@ class Topology:
             for node_id in self.residentials:
                 if node.node_id == node_id:
                     node.zone = "residentials"
+
+        route_ids = list(set([route.route_id for route in self.routes]))
+        for route in route_ids:
+            nodes = list(set(sum([[u, v] for u, v, data in  self.topology.edges(data=True) if data["label"] == route], [])))
+            subgraph = self.topology.subgraph(nodes)
+            exit_nodes = [node_id for node_id in nodes if len(nx.neighbors(subgraph, node_id)) == 1]
+            for node in self.nodes:
+                for node_id in nodes:
+                    if node.node_id == node_id:
+                        node.exit_nodes.extend(exit_nodes)
+        
 
     def get_graph(self) -> None:
         """

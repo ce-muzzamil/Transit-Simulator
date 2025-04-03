@@ -20,17 +20,19 @@ class TransitSystem:
         min_num_route_per_toplogy: int = 4,
         max_num_route_per_toplogy: int = 12,
         hours_of_opperation_per_day: int = 18,
-        mean_population_density: float = 300.0,
-        std_population_density: float = 200.0,
-        min_population_density: float = 100.0,
+        mean_population_density: float = 2000.0,
+        std_population_density: float = 500.0,
+        min_population_density: float = 350.0,
         mean_catchment_radius: float = 2.0,
         std_catchment_radius: float = 1.0,
-        min_catchment_radius: float = 0.5,
+        min_catchment_radius: float = 1.0,
         min_transit_users_proportion: float = 0.05,
-        max_transit_users_proportion: float = 0.3,
-        min_distance: float = 2500,
-        max_distance: float = 10000,
+        max_transit_users_proportion: float = 0.30,
+        min_distance: float = 500.0,
+        max_distance: float = 2000.0,
         seed: int = 0,
+        *args,
+        **kwargs,
     ) -> None:
         """
         Argument:
@@ -153,3 +155,11 @@ class TransitSystem:
                     seed=self.seed, time=time, **passenger.to_dct()
                 )
                 self.passenger_logger.commit()
+        
+        to_drop = []
+        for bus in self.buses:
+            if bus.done:
+                to_drop.append(bus)
+
+        for bus in to_drop:
+            self.buses.remove(bus)

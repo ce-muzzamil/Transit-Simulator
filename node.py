@@ -68,7 +68,7 @@ class Node:
             p=softmax(np.linspace(4, -4, 1000), axis=0),
         )
 
-        self.transit_users = self.population * self.population_proportion_using_transit
+        self.transit_users: float = self.population * self.population_proportion_using_transit
 
         self.affiliated_routes = set() #all the routes the node is attached to (can provide info on the associated route id and if it's transfer)
         self.exit_nodes : list[int] = []
@@ -86,7 +86,7 @@ class Node:
         self.avg_waiting_time: float = 0.0
         self.avg_stranding_counts: float = 0.0
         self.time_of_last_bus: int = 0
-        self.step_counter: int = 0
+        self.step_counter: int = 1
 
     def check_transfers(self, destination: Self) -> list[Self]:
         """
@@ -252,6 +252,14 @@ class Node:
         return to_drop
     
 
+    def distance_to_exit_nodes(self):
+        exit_nodes = self.exit_nodes.copy()
+        for node_id in self.exit_nodes:
+            if node_id == self.node_id:
+                exit_nodes.remove(node_id)
+        return [self.od_distance[exit_node] for exit_node in exit_nodes]
+    
+
     def get_dct(self) -> dict:
         """
         This function returns the dictionary of the `Node` object
@@ -278,15 +286,15 @@ class Node:
             "population": self.population,
             "transit_users": self.transit_users,
             "is_transfer": self.is_transfer,
-            "min_distance_from_exit_node": min([self.od_distance[exit_node] for exit_node in self.exit_nodes]),
-            "max_distance_from_exit_node": max([self.od_distance[exit_node] for exit_node in self.exit_nodes]),
+            "min_distance_from_exit_node": min(self.distance_to_exit_nodes()),
+            "max_distance_from_exit_node": max(self.distance_to_exit_nodes()),
             "average_arrivals": self.arrivals/self.step_counter,
             "average_departures": self.departures/self.step_counter,
             "average_waiting_time": self.avg_waiting_time/self.step_counter,
             "average_stranding_counts": self.avg_stranding_counts/self.step_counter,
             "time_elapsed_since_last_bus": self.step_counter - self.time_of_last_bus,
             "number_of_waiting_passengers": len(self.passengers),
-            "number_of_stranding_passengers": len([passenger for passenger in self.passengers if passenger.stranding_counts>0]),
+            "number_of_stranding_passengers": len([passenger for passenger in self.passengers if passenger.stranding_counts>0])
         }
 
 

@@ -74,6 +74,14 @@ class Topology:
         self.brush()
         self.generate_od_routes()
         self.initiallize_traffic_data()
+
+        self.route_ids = sorted(set([d["label"] for _, _, d in self.topology.edges(data=True)]))
+        self.route_attributes = {}
+        for route_id in self.route_ids:
+            self.route_attributes[route_id] = {"distance": sum([route.distance for route in self.routes if route.route_id == route_id])}
+
+        for route_id in self.route_ids:
+            self.route_attributes[route_id]["percent_length"] = self.route_attributes[route_id]["distance"]/sum([self.route_attributes[route_id]["distance"] for route_id in self.route_ids])
         
     
     def fix_route_clusters(self) -> None:
@@ -308,7 +316,7 @@ class Topology:
         for route in route_ids:
             nodes = list(set(sum([[u, v] for u, v, data in  self.topology.edges(data=True) if data["label"] == route], [])))
             subgraph = self.topology.subgraph(nodes)
-            exit_nodes = [node_id for node_id in nodes if len(nx.neighbors(subgraph, node_id)) == 1]
+            exit_nodes = [node_id for node_id in nodes if len(list(nx.neighbors(subgraph, node_id))) == 1]
             for node in self.nodes:
                 for node_id in nodes:
                     if node.node_id == node_id:
@@ -401,7 +409,10 @@ class Topology:
         """
         max_num_routes = min(self.num_stations//self.min_num_stops_per_route, self.max_num_route_per_toplogy)
         min_num_routes = max(self.num_stations//self.max_num_stops_per_route, self.min_num_route_per_toplogy)
-        self.num_routes = np.random.randint(min_num_routes, max_num_routes)
+        if min_num_routes < max_num_routes:
+            self.num_routes = np.random.randint(min_num_routes, max_num_routes)
+        else:
+            self.num_routes = max_num_routes
 
         self.routes = []
         used_nodes = []

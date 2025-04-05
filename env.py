@@ -19,6 +19,9 @@ class TransitNetworkEnv(gym.Env):
         self.current_time = 0
         
         self.edge_data = {}
+
+        self.alpha_1 = 0.1
+        self.alpha_2 = 0.1
         
     def reset(self, hard_reset=False):
         if hard_reset:
@@ -27,6 +30,7 @@ class TransitNetworkEnv(gym.Env):
             else:
                 self.seed =  np.random.randint(self.transit_system_config["max_training_seed"], self.transit_system_config["max_training_seed"] + 
                                             self.transit_system_config["max_number_of_testing_seeds"])
+            self.edge_data = {}
                 
         self.transit_system = TransitSystem(**self.transit_system_config, seed=self.seed)
         graph, sub_graphs = self.get_graph()
@@ -44,10 +48,10 @@ class TransitNetworkEnv(gym.Env):
                         self.edge_data[edge] = {"distance": route.distance}
                         break
 
-        graph = nx.set_edge_attributes(graph, self.edge_data)
+        nx.set_edge_attributes(graph, self.edge_data)
 
         nodes = self.transit_system.topology.nodes
-        nodes_in_routes = {set() for _ in set([route.route_id for route in routes])}
+        nodes_in_routes = {k:set() for k in sorted(set([route.route_id for route in routes]))}
         
         data = {}
         for node in nodes:
@@ -56,7 +60,7 @@ class TransitNetworkEnv(gym.Env):
                 if node.node_id in nodes_in_routes[route_id]:
                     data[node.node_id]["num_buses_on_route"] = len([bus for bus in self.transit_system.buses if bus.service_route == route_id])
 
-        graph = nx.set_node_attributes(graph, data)
+        nx.set_node_attributes(graph, data)
 
         for route in routes:
             nodes_in_routes[route.route_id].add(route.node_u.node_id)
@@ -84,6 +88,7 @@ class TransitNetworkEnv(gym.Env):
         reward = self.reward()
         obs = self.get_graph()
         
+        truncated = False
         current_time = self.current_time + self.analysis_period_sec
         if current_time >= self.hours_of_opperation_per_day * 3600:
             self.current_day += 1
@@ -100,13 +105,39 @@ class TransitNetworkEnv(gym.Env):
         return obs, reward, False, truncated, info
     
 
-
     def reward(self):
-        total_distance_traversed = sum([bus.total_distance_traversed/self.transit_system_config["max_distance"] for bus in self.transit_system.buses])
-        total_waiting_time = sum([sum([passenger.waiting_time/(self.hours_of_opperation_per_day * 3600) for passenger in node.passengers]) for node in self.transit_system.topology.nodes])
-        total_stranding_counts = sum([sum([passenger.stranding_counts/10 for passenger in node.passengers]) for node in self.transit_system.topology.nodes])
+        """
+        Reward function here is inspired from the https://arxiv.org/abs/2107.07066
+        """
+
+        # r = 1 - om/em  if action==0 else om/em (where om/em is demand / bus capacity) (Also penalize the action=0 for waiting time and both actions for stranding time)  Guanqun Ai
+        # since we deal with an for each exit node seperately we will not use the above function directly
+
+        reward = 0
+
+        # First lets think from the rpespective of passengers
+        total_capacity = sum([bus.capacity - len(bus.passengers) for bus in self.transit_system.buses]) + 1
+        total_demand = sum([len(node.passengers) for node in self.transit_system.topology.nodes])
+
+        demand_capacity_ratio = total_demand / total_capacity
+        reward += 1 - demand_capacity_ratio # forcing the model to incease the number of buses to achive highest rewards
+
+        avg_waiting_time = np.mean([np.median([passenger.waiting_time for passenger in node.passengers]) for node in self.transit_system.topology.nodes])/3600 #hours
+        avg_stranding_count = np.mean([np.median([passenger.stranding_counts for passenger in node.passengers]) for node in self.transit_system.topology.nodes]) #counts
+
+        reward += - self.alpha_1 * avg_waiting_time - self.alpha_2 * avg_stranding_count #penalizing the long waiting time and standing counts
         
-        return - total_distance_traversed - total_waiting_time - total_stranding_counts
+        # Now lets think from the prespectives of opperators
+
+        operator_cost = 0
+        for route_id in self.transit_system.topology.route_attributes.keys():
+            num_buses = sum([1 for bus in self.transit_system.buses if bus.service_route == route_id])
+            operator_cost = num_buses * self.transit_system.topology.route_attributes["percent_length"]
+
+        reward += -operator_cost
+        
+        return reward
+
 
     def render(self):
         pass

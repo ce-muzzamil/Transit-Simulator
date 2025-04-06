@@ -83,6 +83,13 @@ class Topology:
         for route_id in self.route_ids:
             self.route_attributes[route_id]["percent_length"] = self.route_attributes[route_id]["distance"]/sum([self.route_attributes[route_id]["distance"] for route_id in self.route_ids])
         
+        for node in self.nodes:
+            if not node.is_transfer:
+                for route in self.routes:
+                    if node in route.node_pair:
+                        node.associated_route = route.route_id
+                        break
+
     
     def fix_route_clusters(self) -> None:
         """

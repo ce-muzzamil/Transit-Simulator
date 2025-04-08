@@ -40,13 +40,13 @@ class TransitNetworkEnv(gym.Env):
         self.observation_space = spaces.Dict({
             "x": spaces.Box(low=-np.inf, high=np.inf, shape=(self.max_nodes, self.num_node_features), dtype=np.float32),
             "edge_index": spaces.Box(low=0, high=np.inf, shape=(2, self.max_edges), dtype=np.int64),
-            "edge_attr": spaces.Box(low=0, high=np.inf, shape=(self.max_edges,), dtype=np.float32),
+            "edge_attr": spaces.Box(low=0, high=np.inf, shape=(self.max_edges, 1), dtype=np.float32),
         })
 
         self.action_space = spaces.MultiBinary(self.max_routes * self.max_exit_nodes_per_route)
 
     
-    def reset(self, hard_reset=False):
+    def reset(self, hard_reset=True, *args, **kwargs):
         if hard_reset:
             if self.is_training:
                 self.seed = np.random.randint(0, self.transit_system_config["max_training_seed"])
@@ -59,8 +59,9 @@ class TransitNetworkEnv(gym.Env):
         self.num_nodes = len(self.transit_system.topology.nodes)
         self.num_edges = len(self.transit_system.topology.routes)
         self.num_routes = self.transit_system.topology.num_routes
+        self.max_num_buses = self.num_routes * 50
 
-        return self.get_graph()
+        return self.get_graph(), {}
     
 
     def get_updated_node_data(self):
@@ -117,17 +118,32 @@ class TransitNetworkEnv(gym.Env):
 
     def update_graph(self):
         data = self.get_updated_node_data()
-        # nx.set_node_attributes(self.graph, data)
         obs = from_networkx(self.graph)
         obs.x = torch.from_numpy(np.stack(data, axis=0))
         return self.fix_obs_shape(obs)
-    
 
     def fix_obs_shape(self, obs: Data):
-        # obs.x = obs.x[:self.num_nodes, :]
-        # obs.edge_index = obs.edge_index[:, :self.num_edges * 2]
-        # obs.edge_attr = obs.edge_attr[:self.num_edges * 2]
-        # obs.y = obs.y[:self.num_nodes, :] if obs.y is not None else None
+        if obs.edge_attr.ndim == 1:
+            obs.edge_attr = obs.edge_attr.unsqueeze(1)
+
+        if obs.x.ndim > 2:
+            N = obs.x.shape[0]
+            x = []
+            edge_attr = []
+            edge_index = []
+            for i in range(N):
+                x.append(torch.nn.functional.pad(obs.x[i], (0, 0, 0, self.max_nodes - obs.x[i].shape[0]), mode='constant', value=0))
+                edge_index.append(torch.nn.functional.pad(obs.edge_index[i], (0, self.max_edges - obs.edge_index[i].shape[1], 0, 0), mode='constant', value=0))
+                edge_attr.append(torch.nn.functional.pad(obs.edge_attr[i], (0, 0, 0, self.max_edges - obs.edge_attr[i].shape[0]), mode='constant', value=0))
+            
+            obs.x = torch.stack(x, dim=0)
+            edge_index = torch.stack(edge_index, dim=0)
+            edge_attr = torch.stack(edge_attr, dim=0)
+        else:
+            obs.x = torch.nn.functional.pad(obs.x, (0, 0, 0, self.max_nodes - obs.x.shape[0]), mode='constant', value=0)
+            obs.edge_index = torch.nn.functional.pad(obs.edge_index, (0, self.max_edges - obs.edge_index.shape[1], 0, 0), mode='constant', value=0)
+            obs.edge_attr = torch.nn.functional.pad(obs.edge_attr, (0, 0, 0, self.max_edges - obs.edge_attr.shape[0]), mode='constant', value=0)        
+        
         return obs
         
 
@@ -149,7 +165,9 @@ class TransitNetworkEnv(gym.Env):
         obs: Data = self.update_graph()
         
         truncated = False
+        terminated = False
         current_time = self.current_time + self.analysis_period_sec
+        self.transit_system.step(current_time)
         if current_time >= self.hours_of_opperation_per_day * 3600:
             self.current_day += 1
             current_time = 0
@@ -161,20 +179,48 @@ class TransitNetworkEnv(gym.Env):
 
         info  = {}
 
-        return obs, reward, False, truncated, info
+        if len(self.transit_system.buses) > self.max_num_buses:
+            terminated = True
+            reward = -1000
 
-    def get_sub_graphs(self, obs: Data):
-        subgraphs = []
-        for route_id in self.nodes_in_routes.keys():
-            indices = [self.node_indices[i] for i in self.nodes_in_routes[route_id]]
-            edge_index, edge_attr = subgraph(indices, obs.edge_index, obs.edge_attr, relabel_nodes=True)
-            sub_data = Data(
-                x=obs.x[indices],
-                edge_index=edge_index,
-                edge_attr=edge_attr,
-                y=obs.y[indices] if obs.y is not None else None
-            )
-            subgraphs.append(sub_data)
+        return obs, reward, terminated, truncated, info
+
+    def get_sub_graphs(self, obs: Data) -> list[Data]:
+        if obs["edge_index"].ndim == 2:
+            subgraphs = []
+            for route_id in self.nodes_in_routes.keys():
+                indices = torch.tensor([self.node_indices[i] for i in self.nodes_in_routes[route_id]]).long()
+                edge_index, edge_attr = subgraph(indices, obs["edge_index"].long(), obs["edge_attr"], relabel_nodes=False)
+                sub_data = Data(
+                    x=obs["x"][indices],
+                    edge_index=edge_index,
+                    edge_attr=edge_attr,
+                    y=obs["y"][indices] if obs["y"] is not None else None
+                )
+                subgraphs.append(self.fix_obs_shape(sub_data))
+        else:
+            subgraphs = []
+            for route_id in self.nodes_in_routes.keys():
+                indices = torch.tensor([self.node_indices[i] for i in self.nodes_in_routes[route_id]]).long()
+                batch_size = obs["edge_index"].shape[0]
+                sub_datas = []
+                for i in range(batch_size):
+                    edge_index, edge_attr = subgraph(indices, obs["edge_index"][i].long(), obs["edge_attr"][i], relabel_nodes=False)
+                    sub_data = Data(
+                        x=obs["x"][i][indices],
+                        edge_index=edge_index,
+                        edge_attr=edge_attr,
+                        y=None if "y" not in obs else obs["y"][i][indices]
+                    )
+                    sub_datas.append(self.fix_obs_shape(sub_data))
+
+                sub_data = Data(x=torch.stack([sub_data.x for sub_data in sub_datas], dim=0),
+                                edge_index=torch.stack([sub_data.edge_index for sub_data in sub_datas], dim=0),
+                                edge_attr=torch.stack([sub_data.edge_attr for sub_data in sub_datas], dim=0),
+                                y=None if "y" not in obs else torch.stack([sub_data.y for sub_data in sub_datas], dim=0))
+
+                subgraphs.append(sub_data)
+
         return subgraphs
 
     def reward(self) -> float:
@@ -220,9 +266,6 @@ class TransitNetworkEnv(gym.Env):
         reward += -operator_cost
         
         return reward
-
-
- 
 
     def render(self):
         pass

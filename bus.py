@@ -52,6 +52,16 @@ class Bus:
         self.num_stations_in_trajectory = len(nodes_ids)
 
         subgraph: nx.Graph = self.topology.topology.subgraph(nodes_ids)
+        subgraph = nx.Graph(subgraph)
+
+        to_drop = []
+        for u, v, data in subgraph.edges(data=True):
+            if data["label"] != service_route:
+                to_drop.append((u, v))
+                to_drop.append((v, u))
+
+        subgraph.remove_edges_from(to_drop)
+
         self.neighbors = {
             node: list(nx.neighbors(subgraph, node)) for node in nodes_ids
         }
@@ -146,12 +156,8 @@ class Bus:
                 )
 
         if len(self.to_go) == 0:
-        #     self.reversed = not self.reversed
-        #     self.initilize_trajectory()
             self.done = True
             return to_drop
-
-
 
         self.speed = min(
             max(5.56, self.avg_speed + np.random.normal(loc=0, scale=10)), 33.34

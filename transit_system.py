@@ -85,7 +85,7 @@ class TransitSystem:
         self.analysis_period_sec = analysis_period_sec
         self.buses: list[Bus] = []
 
-        self.route_ids = set([r.route_id for r in self.topology.routes])
+        self.route_ids = self.topology.route_ids
         for route_id in self.route_ids:
             for _ in range(self.num_busses_per_route):
                 self.add_bus_on_route(route_id, reversed=False)
@@ -162,4 +162,5 @@ class TransitSystem:
                 to_drop.append(bus)
 
         for bus in to_drop:
-            self.buses.remove(bus)
+            if bus in self.buses:
+                self.buses.remove(bus)

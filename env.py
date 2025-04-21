@@ -10,7 +10,6 @@ from torch_geometric.utils import subgraph
 from torch_geometric.data import Data
 
 
-
 class TransitNetworkEnv(gym.Env):
     def __init__(self, is_training=True, seed=0):
         np.random.seed(seed)
@@ -28,25 +27,31 @@ class TransitNetworkEnv(gym.Env):
         self.edge_data = {}
         self.nodes_in_routes = {}
 
-        self.alpha_1 = 0.1
-        self.alpha_2 = 0.1
+        self.alpha_1 = 1
+        self.alpha_2 = 1
 
         self.max_nodes = 512
         self.max_edges = self.max_nodes * 4
         self.num_node_features = 17
-        self.max_routes = 32
+        self.max_routes = 12
         self.max_exit_nodes_per_route = 2
 
         self.observation_space = spaces.Dict({
+            "num_routes": spaces.Discrete(self.max_routes),
             "x": spaces.Box(low=-np.inf, high=np.inf, shape=(self.max_nodes, self.num_node_features), dtype=np.float32),
             "edge_index": spaces.Box(low=0, high=np.inf, shape=(2, self.max_edges), dtype=np.int64),
             "edge_attr": spaces.Box(low=0, high=np.inf, shape=(self.max_edges, 1), dtype=np.float32),
+
+            **{**{f"x_{i}": spaces.Box(low=-np.inf, high=np.inf, shape=(self.max_nodes, self.num_node_features), dtype=np.float32) for i in range(self.max_routes)},
+               **{f"edge_index_{i}": spaces.Box(low=0, high=np.inf, shape=(2, self.max_edges), dtype=np.int64) for i in range(self.max_routes)},
+               **{f"edge_attr_{i}": spaces.Box(low=0, high=np.inf, shape=(self.max_edges, 1), dtype=np.float32) for i in range(self.max_routes)}}
         })
 
         self.action_space = spaces.MultiBinary(self.max_routes * self.max_exit_nodes_per_route)
-
-    
-    def reset(self, hard_reset=True, *args, **kwargs):
+        self.seed = seed
+        self.seeds = [self.seed]
+        
+    def _reset(self, hard_reset=True):
         if hard_reset:
             if self.is_training:
                 self.seed = np.random.randint(0, self.transit_system_config["max_training_seed"])
@@ -55,15 +60,46 @@ class TransitNetworkEnv(gym.Env):
                                             self.transit_system_config["max_number_of_testing_seeds"])
             self.del_data()
 
-        self.transit_system = TransitSystem(**self.transit_system_config, seed=self.seed) 
+        self.transit_system = TransitSystem(**self.transit_system_config, seed=self.seed)
         self.num_nodes = len(self.transit_system.topology.nodes)
         self.num_edges = len(self.transit_system.topology.routes)
         self.num_routes = self.transit_system.topology.num_routes
-        self.max_num_buses = self.num_routes * 50
+        self.max_num_buses = 15000
 
-        return self.get_graph(), {}
+        if self.num_routes == 0:
+            return
+
+        obs = self.get_graph()
+        subgraphs = self.get_sub_graphs(obs)
+        for subgraph in subgraphs:
+            obs.update(subgraph)
+        
+        if self.num_routes < self.max_routes:
+            for i in range(self.max_routes - self.num_routes):
+                sg = {
+                    f"x_{self.num_routes + i}": subgraph[f"x_{self.num_routes-1}"],
+                    f"edge_index_{self.num_routes + i}": subgraph[f"edge_index_{self.num_routes-1}"],
+                    f"edge_attr_{self.num_routes + i}": subgraph[f"edge_attr_{self.num_routes-1}"]}
+                obs.update(sg)
+        
+        obs["num_routes"] = self.num_routes
+                
+        return obs, {}
     
-
+    def reset(self, hard_reset=True, *args, **kwargs):
+        done = False
+        while not done:
+            try:
+                output = self._reset(hard_reset=hard_reset)
+                if self.seed not in self.seeds and self.num_routes > 0 and self.transit_system is not None:
+                    self.seeds.append(self.seed)
+                    done = True
+                else:
+                    np.random.seed(np.random.randint(0,1000_000))
+            except:
+                np.random.seed(np.random.randint(0,1000_000))
+        return output
+    
     def get_updated_node_data(self):
         data = []
 
@@ -144,7 +180,9 @@ class TransitNetworkEnv(gym.Env):
             obs.edge_index = torch.nn.functional.pad(obs.edge_index, (0, self.max_edges - obs.edge_index.shape[1], 0, 0), mode='constant', value=0)
             obs.edge_attr = torch.nn.functional.pad(obs.edge_attr, (0, 0, 0, self.max_edges - obs.edge_attr.shape[0]), mode='constant', value=0)        
         
-        return obs
+        return {"x": obs.x,
+                "edge_index": obs.edge_index,
+                "edge_attr": obs.edge_attr}
         
 
     def step(self, action:np.ndarray):
@@ -161,51 +199,65 @@ class TransitNetworkEnv(gym.Env):
             if decision == 1:
                 self.transit_system.add_bus_on_route(i // 2, reversed = False if i % 2 == 0 else True)
 
-        reward = self.reward()
-        obs: Data = self.update_graph()
+        reward, reward_info = self.reward()
+        obs: dict = self.update_graph()
         
         truncated = False
         terminated = False
-        current_time = self.current_time + self.analysis_period_sec
-        self.transit_system.step(current_time)
-        if current_time >= self.hours_of_opperation_per_day * 3600:
+        self.transit_system.step(self.current_time)
+
+        if self.current_time >= self.hours_of_opperation_per_day * 3600 - 1:
             self.current_day += 1
-            current_time = 0
+            self.current_time = 0
             obs = self.reset(hard_reset=False)
-            truncated = False
+        else:
+            self.current_time = self.current_time + self.analysis_period_sec
         
-        if self.current_day >= self.analysis_period_days:
+        if self.current_day > self.analysis_period_days:
             truncated = True
 
-        info  = {}
+        info  = {**reward_info}
 
         if len(self.transit_system.buses) > self.max_num_buses:
             terminated = True
-            reward = -1000
+            reward = -100
 
+        subgraphs = self.get_sub_graphs(obs)
+        for subgraph in subgraphs:
+            obs.update(subgraph)
+
+        if self.num_routes < self.max_routes:
+            for i in range(self.max_routes - self.num_routes):
+                sg = {
+                    f"x_{self.num_routes + i}": subgraph[f"x_{self.num_routes-1}"],
+                    f"edge_index_{self.num_routes + i}": subgraph[f"edge_index_{self.num_routes-1}"],
+                    f"edge_attr_{self.num_routes + i}": subgraph[f"edge_attr_{self.num_routes-1}"]}
+                obs.update(sg)
+
+        obs["num_routes"] = self.num_routes
         return obs, reward, terminated, truncated, info
 
-    def get_sub_graphs(self, obs: Data) -> list[Data]:
+    def get_sub_graphs(self, obs: dict) -> list[Data]:
         if obs["edge_index"].ndim == 2:
-            subgraphs = []
+            subgraphs: list[dict] = []
             for route_id in self.nodes_in_routes.keys():
                 indices = torch.tensor([self.node_indices[i] for i in self.nodes_in_routes[route_id]]).long()
-                edge_index, edge_attr = subgraph(indices, obs["edge_index"].long(), obs["edge_attr"], relabel_nodes=False)
+                edge_index, edge_attr = subgraph(indices, obs["edge_index"].long(), obs["edge_attr"], relabel_nodes=False, num_nodes=self.num_nodes)
                 sub_data = Data(
                     x=obs["x"][indices],
                     edge_index=edge_index,
                     edge_attr=edge_attr,
-                    y=obs["y"][indices] if obs["y"] is not None else None
+                    y=None if "y" not in obs else obs["y"][indices]
                 )
                 subgraphs.append(self.fix_obs_shape(sub_data))
         else:
-            subgraphs = []
+            subgraphs: list[dict] = []
             for route_id in self.nodes_in_routes.keys():
                 indices = torch.tensor([self.node_indices[i] for i in self.nodes_in_routes[route_id]]).long()
                 batch_size = obs["edge_index"].shape[0]
                 sub_datas = []
                 for i in range(batch_size):
-                    edge_index, edge_attr = subgraph(indices, obs["edge_index"][i].long(), obs["edge_attr"][i], relabel_nodes=False)
+                    edge_index, edge_attr = subgraph(indices, obs["edge_index"][i].long(), obs["edge_attr"][i], relabel_nodes=False, num_nodes=self.num_nodes)
                     sub_data = Data(
                         x=obs["x"][i][indices],
                         edge_index=edge_index,
@@ -214,14 +266,14 @@ class TransitNetworkEnv(gym.Env):
                     )
                     sub_datas.append(self.fix_obs_shape(sub_data))
 
-                sub_data = Data(x=torch.stack([sub_data.x for sub_data in sub_datas], dim=0),
-                                edge_index=torch.stack([sub_data.edge_index for sub_data in sub_datas], dim=0),
-                                edge_attr=torch.stack([sub_data.edge_attr for sub_data in sub_datas], dim=0),
-                                y=None if "y" not in obs else torch.stack([sub_data.y for sub_data in sub_datas], dim=0))
+                sub_data = Data(x=torch.stack([sub_data["x"] for sub_data in sub_datas], dim=0),
+                                edge_index=torch.stack([sub_data["edge_index"] for sub_data in sub_datas], dim=0),
+                                edge_attr=torch.stack([sub_data["edge_attr"] for sub_data in sub_datas], dim=0),
+                                y=None if "y" not in obs else torch.stack([sub_data["y"] for sub_data in sub_datas], dim=0))
 
-                subgraphs.append(sub_data)
+                subgraphs.append(sub_data.to_dict())
 
-        return subgraphs
+        return [{k + f"_{i}": v for k, v in subgraph.items()} for i, subgraph in enumerate(subgraphs)]
 
     def reward(self) -> float:
         """
@@ -230,16 +282,17 @@ class TransitNetworkEnv(gym.Env):
 
         # r = 1 - om/em  if action==0 else om/em (where om/em is demand / bus capacity) (Also penalize the action=0 for waiting time and both actions for stranding time)  Guanqun Ai
         # since we deal with an for each exit node seperately we will not use the above function directly
+        reward_info = {}
 
-        reward = 0
 
         # First lets think from the rpespective of passengers
         total_capacity = sum([bus.capacity - len(bus.passengers) for bus in self.transit_system.buses]) + 1
         total_demand = sum([len(node.passengers) for node in self.transit_system.topology.nodes])
 
         demand_capacity_ratio = total_demand / total_capacity
-        reward += 1 - demand_capacity_ratio # forcing the model to incease the number of buses to achive highest rewards
+        reward_1 = 1 - demand_capacity_ratio # forcing the model to incease the number of buses to achive highest rewards
 
+        reward_info["reward_type_1"] = reward_1
 
         num_passengers = [len(node.passengers) for node in self.transit_system.topology.nodes]
         avg_waiting_time = [np.median([passenger.waiting_time for passenger in node.passengers]) for node, num_passenger in zip(self.transit_system.topology.nodes, num_passengers) if num_passenger > 0]
@@ -254,8 +307,9 @@ class TransitNetworkEnv(gym.Env):
         else:
             avg_stranding_count = 0 #counts
 
-        reward += - self.alpha_1 * avg_waiting_time - self.alpha_2 * avg_stranding_count #penalizing the long waiting time and standing counts
-        
+        reward_2 = - self.alpha_1 * avg_waiting_time - self.alpha_2 * avg_stranding_count #penalizing the long waiting time and standing counts
+        reward_info["reward_type_2"] = reward_2
+
         # Now lets think from the prespectives of opperators
 
         operator_cost = 0
@@ -263,9 +317,10 @@ class TransitNetworkEnv(gym.Env):
             num_buses = sum([1 for bus in self.transit_system.buses if bus.service_route == route_id])
             operator_cost = num_buses * self.transit_system.topology.route_attributes[route_id]["percent_length"]
 
-        reward += -operator_cost
+        reward_3 = -operator_cost
+        reward_info["reward_type_3"] = reward_3
         
-        return reward
+        return reward_1 + reward_2 + reward_3, reward_info
 
     def render(self):
         pass

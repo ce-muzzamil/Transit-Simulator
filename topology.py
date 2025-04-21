@@ -31,6 +31,8 @@ class Topology:
                  min_distance: float = 2500,
                  max_distance: float = 10000,
                  seed: int = 0,
+                 *args,
+                 **kwargs,
                  ) -> None:
         """
         Argument:
@@ -90,6 +92,8 @@ class Topology:
                         node.associated_route = route.route_id
                         break
 
+        self.num_routes = len(self.route_ids)
+
     
     def fix_route_clusters(self) -> None:
         """
@@ -109,7 +113,7 @@ class Topology:
                         if route_id_1 not in route_clusters:
                             route_clusters[route_id_1] = [route_id_1]
                         route_clusters[route_id_1].append(route_id_2)
-
+            
             if np.isin(list(nodes.keys()), route_clusters[route_id_1]).all():
                 return
         
@@ -273,11 +277,65 @@ class Topology:
         self.get_graph()
         self.fix_route_clusters()
         self.remove_isolated_nodes()
+        self.fix_route_loop_and_discontinuity()
         self.find_neighbors()
         self.fix_splinter_issue()
         self.initiallize_traffic_data()
         self.process_nodes_and_routes()
     
+    def fix_route_loop_and_discontinuity(self):
+        route_ids = sorted(set([data["label"] for _, _, data in self.topology.edges(data=True)]))
+        nodes_in_routes = {k:list(set(sum([[u,v] for u, v, d in self.topology.edges(data=True) if d["label"]==k], []))) for k in route_ids}
+        for route_id in route_ids:
+            
+            nodes = nodes_in_routes[route_id]
+
+            subgraph: nx.Graph = nx.subgraph(self.topology, nodes)
+            subgraph = nx.Graph(subgraph)
+            to_drop = []
+            for u, v, data in subgraph.edges(data=True):
+                if data["label"] != route_id:
+                    to_drop.append((u, v))
+                    to_drop.append((v, u))
+
+            subgraph.remove_edges_from(to_drop)
+
+            neighbors = {node: list(nx.neighbors(subgraph, node)) for node in nodes}
+            exit_nodes = [node_id for node_id in nodes if len(neighbors[node_id]) == 1]
+
+            if len(exit_nodes) == 0:
+                all_edges_in_route_id = subgraph.edges
+                self.topology.remove_edges_from(all_edges_in_route_id)
+                self.topology.add_edges_from([
+                    (u, v, {"label": route_id}) for u, v in zip(nodes[:-1], nodes[1:])
+                ])
+
+            subgraph: nx.Graph = nx.subgraph(self.topology, nodes)
+            subgraph = nx.Graph(subgraph)
+            to_drop = []
+            for u, v, data in subgraph.edges(data=True):
+                if data["label"] != route_id:
+                    to_drop.append((u, v))
+                    to_drop.append((v, u))
+
+            subgraph.remove_edges_from(to_drop)
+
+            neighbors = {node: list(nx.neighbors(subgraph, node)) for node in nodes}
+            exit_nodes = [node_id for node_id in nodes if len(neighbors[node_id]) == 1]
+
+            if len(exit_nodes) > 2:
+                options = []
+                for u in exit_nodes:
+                    for v in exit_nodes:
+                        if u != v:
+                            if ((u, v) not in self.topology.edges and 
+                                (v, u) not in self.topology.edges):
+                                options.append((u, v))
+            
+                selected = np.random.choice(len(options))
+                u, v = options[selected]
+                self.topology.add_edge(u, v, label=route_id)
+                            
 
     def process_nodes_and_routes(self) -> None:
         """
@@ -322,8 +380,20 @@ class Topology:
         route_ids = list(set([route.route_id for route in self.routes]))
         for route in route_ids:
             nodes = list(set(sum([[u, v] for u, v, data in  self.topology.edges(data=True) if data["label"] == route], [])))
-            subgraph = self.topology.subgraph(nodes)
-            exit_nodes = [node_id for node_id in nodes if len(list(nx.neighbors(subgraph, node_id))) == 1]
+            
+            subgraph: nx.Graph = nx.subgraph(self.topology, nodes)
+            subgraph = nx.Graph(subgraph)
+            to_drop = []
+            for u, v, data in subgraph.edges(data=True):
+                if data["label"] != route:
+                    to_drop.append((u, v))
+                    to_drop.append((v, u))
+
+            subgraph.remove_edges_from(to_drop)
+
+            neighbors = {node: list(nx.neighbors(subgraph, node)) for node in nodes}
+            exit_nodes = [node_id for node_id in nodes if len(neighbors[node_id]) == 1]
+            
             for node in self.nodes:
                 for node_id in nodes:
                     if node.node_id == node_id:
@@ -342,8 +412,9 @@ class Topology:
             self.topology.add_node(node.node_id)
         for i, route in enumerate(routes):
             for node_pair in route:
-                node_pair = max(*node_pair), min(*node_pair)
-                self.topology.add_edge(*node_pair, label=i)
+                if node_pair[0] != node_pair[1]:
+                    node_pair = max(*node_pair), min(*node_pair)
+                    self.topology.add_edge(*node_pair, label=i)
 
     def fix_splinter_issue(self) -> None:
         """
@@ -394,9 +465,11 @@ class Topology:
         """
         Generates nodes using uniform probability distribution given the min and max nodes per route and min and max routes per topology
         """
-        self.num_stations = np.random.randint(self.min_num_stops_per_route*self.min_num_route_per_toplogy, 
-                                         self.max_num_stops_per_route*self.max_num_route_per_toplogy)
-        
+        # self.num_stations = np.random.randint(self.min_num_stops_per_route*self.min_num_route_per_toplogy, 
+        #                                  self.max_num_stops_per_route*self.max_num_route_per_toplogy)
+
+        self.num_stations = np.random.randint(self.max_num_stops_per_route*self.min_num_route_per_toplogy,
+                                              self.max_num_stops_per_route*self.max_num_route_per_toplogy)
 
         self.nodes = []
         for node_id in range(self.num_stations):
@@ -435,7 +508,7 @@ class Topology:
             _route = [route[0]]
             for i in range(len(route)-1):
                 u, v = route[i], route[i+1]
-                if not v in nbrs[u]:
+                if not v in nbrs[u] and v != u:
                     nbrs[u].append(v)
                     _route.append(v)
 
@@ -476,9 +549,9 @@ class Topology:
             self.routes[z_route_id].insert(loc, v)
    
     def show(self, 
-             figsize: tuple[int, int] = (8, 8),
+             figsize: tuple[int, int] = (6, 6),
              node_color: str = 'lightblue',
-             node_size: int = 800, 
+             node_size: int = 200, 
              font_size: float = 10, 
              show_label: bool | None = None,
              with_labels: bool |None= True,

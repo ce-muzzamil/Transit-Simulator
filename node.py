@@ -225,8 +225,9 @@ class Node:
                     passenger.transfers.pop(0)
 
         for passenger in to_drop + to_drop_from_bus:
-            bus.passengers.remove(passenger)
-            self.arrivals += 1
+            if passenger in bus.passengers:
+                bus.passengers.remove(passenger)
+                self.arrivals += 1
 
         aboard: list[Passenger] = []
         for passenger in self.passengers:
@@ -252,8 +253,9 @@ class Node:
                             passenger.stranding_counts += 1
 
         for passenger in aboard:
-            self.passengers.remove(passenger)
-            self.departures += 1
+            if passenger in self.passengers:
+                self.passengers.remove(passenger)
+                self.departures += 1
         
         self.time_of_last_bus = time
         return to_drop
@@ -266,6 +268,7 @@ class Node:
                 distances.append(0)
             else:
                 distances.append(self.od_distance[node_id])
+                
         return distances
     
 

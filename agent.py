@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 from torch_geometric.nn import GATv2Conv, global_mean_pool
@@ -83,10 +84,22 @@ class FeatureExtractor(BaseFeaturesExtractor):
         self.env = env
         
     def forward(self, observations):
-        routes = self.env.get_sub_graphs(observations)
+        num_routes = np.argmax(observations["num_routes"])
+
+        routes = []
+        for i in range(num_routes):
+            routes.append({
+                f"x": observations[f"x_{i}"],
+                f"edge_index": observations[f"edge_index_{i}"],
+                f"edge_attr": observations[f"edge_attr_{i}"]
+            })
+
+        observations = {"x": observations["x"],
+                        "edge_index": observations["edge_index"],
+                        "edge_attr": observations["edge_attr"]}
 
         topology_vector = self.topology(observations) #N,E
-        topology_vector = topology_vector.repeat(1, len(routes), 1) # N, R, E
+        topology_vector = topology_vector.unsqueeze(1).repeat(1, len(routes), 1) # N, R, E
         routes_vectors = torch.stack([self.route(route) for route in routes], 1) # N, R, E
 
         out = torch.cat([topology_vector, routes_vectors], dim=-1)
@@ -205,6 +218,29 @@ class GNNPolicy(ActorCriticPolicy):
         actions = distribution.get_actions(deterministic=deterministic)
         log_prob = distribution.log_prob(actions)
         return actions, latent_vf, log_prob
+    
+    def predict(self, observation, state = None, episode_start = None, deterministic = False):
+        features = self.extract_features(observation)  # shared
+        latent_pi = self.actor(features)
+        distribution = self._get_action_dist_from_latent(latent_pi)
+        actions = distribution.get_actions(deterministic=deterministic)
+        return actions
+    
+    def evaluate_actions(self, obs, actions):
+        features = self.extract_features(obs)
+        latent_pi = self.actor(features)
+        latent_vf = self.value_net(features)
+
+        distribution = self._get_action_dist_from_latent(latent_pi)
+        log_prob = distribution.log_prob(actions)
+        entropy = distribution.entropy()
+        return latent_vf, log_prob, entropy
 
     def _get_action_dist_from_latent(self, latent: torch.Tensor):
         return self.action_dist.proba_distribution(latent)
+    
+    def predict_values(self, obs: torch.Tensor) -> torch.Tensor:
+        features = self.extract_features(obs)
+        return self.value_net(features)
+    
+    

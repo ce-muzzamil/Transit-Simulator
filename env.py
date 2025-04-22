@@ -91,11 +91,14 @@ class TransitNetworkEnv(gym.Env):
         while not done:
             try:
                 output = self._reset(hard_reset=hard_reset)
-                if self.seed not in self.seeds and self.num_routes > 0 and self.transit_system is not None:
-                    self.seeds.append(self.seed)
-                    done = True
+                if hard_reset:
+                    if self.seed not in self.seeds and self.num_routes > 0 and self.transit_system is not None:
+                        self.seeds.append(self.seed)
+                        done = True
+                    else:
+                        np.random.seed(np.random.randint(0,1000_000))
                 else:
-                    np.random.seed(np.random.randint(0,1000_000))
+                    done = True
             except:
                 np.random.seed(np.random.randint(0,1000_000))
         return output
@@ -204,16 +207,17 @@ class TransitNetworkEnv(gym.Env):
         
         truncated = False
         terminated = False
+
         self.transit_system.step(self.current_time)
 
-        if self.current_time >= self.hours_of_opperation_per_day * 3600 - 1:
+        if (self.current_time + self.analysis_period_sec) >= self.hours_of_opperation_per_day * 3600:
             self.current_day += 1
             self.current_time = 0
-            obs = self.reset(hard_reset=False)
+            obs, _ = self.reset(hard_reset=False)
         else:
             self.current_time = self.current_time + self.analysis_period_sec
         
-        if self.current_day > self.analysis_period_days:
+        if self.current_day >= self.analysis_period_days:
             truncated = True
 
         info  = {**reward_info}

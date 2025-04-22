@@ -5,7 +5,6 @@ from torch_geometric.nn import GATv2Conv, global_mean_pool
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.policies import ActorCriticPolicy
-from env import TransitNetworkEnv
 
 class GATv2FeatureExtractor(nn.Module):
     def __init__(self, observation_space, hidden_dim=128, num_heads=4, out_dim=256):
@@ -69,7 +68,7 @@ class GATv2FeatureExtractor(nn.Module):
         return x
 
 class FeatureExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space, hidden_dim=128, num_heads=4, out_dim=256, env: TransitNetworkEnv=None):
+    def __init__(self, observation_space, hidden_dim=128, num_heads=4, out_dim=256):
         super().__init__(observation_space, out_dim)
         self.feature_dim = out_dim
         self.topology = GATv2FeatureExtractor(observation_space, hidden_dim, num_heads, out_dim)
@@ -81,7 +80,6 @@ class FeatureExtractor(BaseFeaturesExtractor):
             nn.ReLU(),
             nn.Linear(out_dim, out_dim),
         )
-        self.env = env
         
     def forward(self, observations):
         num_routes = np.argmax(observations["num_routes"])

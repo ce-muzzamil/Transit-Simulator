@@ -137,10 +137,10 @@ class Actor(nn.Module):
         actions = torch.cat(actions, dim=1) #N,R*2
         if actions.ndim == 2:
             N, n = actions.shape
-            actions = torch.cat([actions, torch.zeros((N,self.num_actions-n))], dim=-1)
+            actions = torch.cat([actions, torch.zeros((N,self.num_actions-n), device=x.device)], dim=-1)
         else:
             n = actions.shape[0]
-            actions = torch.cat([actions, torch.zeros(self.num_actions-n)], dim=-1)
+            actions = torch.cat([actions, torch.zeros(self.num_actions-n, device=x.device)], dim=-1)
         return actions
     
 class Critic(nn.Module):

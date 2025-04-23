@@ -74,6 +74,7 @@ class Node:
         self.transit_users: float = self.population * self.population_proportion_using_transit
 
         self.affiliated_routes = set() #all the routes the node is attached to (can provide info on the associated route id and if it's transfer)
+        self.affliated_route_ids = set()
         self.exit_nodes : list[int] = []
         self.is_exit = False
         self.is_transfer = False

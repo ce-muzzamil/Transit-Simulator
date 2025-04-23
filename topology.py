@@ -91,6 +91,9 @@ class Topology:
                     if node in route.node_pair:
                         node.associated_route = route.route_id
                         break
+        
+        for node in self.nodes:
+            node.affliated_route_ids = {route.route_id for route in node.affiliated_routes}
 
         self.num_routes = len(self.route_ids)
 

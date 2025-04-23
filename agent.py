@@ -7,7 +7,10 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.policies import ActorCriticPolicy
 
 class GATv2FeatureExtractor(nn.Module):
-    def __init__(self, observation_space, hidden_dim=128, num_heads=4, out_dim=256):
+    def __init__(self, observation_space, 
+                 hidden_dim=128, 
+                 num_heads=4, 
+                 out_dim=256):
         super().__init__()
 
         in_channels = observation_space["x"].shape[1]
@@ -29,7 +32,7 @@ class GATv2FeatureExtractor(nn.Module):
             edge_dim=edge_dim
         )
 
-        self.dropout = nn.Dropout(0.2)
+        self.dropout = nn.Dropout(0.1)
 
     
     def process_for_gat(self, gat, x, edge_index, edge_attr):

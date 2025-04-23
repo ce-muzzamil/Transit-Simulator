@@ -8,6 +8,7 @@ import networkx as nx
 from torch_geometric.utils.convert import from_networkx
 from torch_geometric.utils import subgraph
 from torch_geometric.data import Data
+import time
 
 
 class TransitNetworkEnv(gym.Env):
@@ -17,50 +18,99 @@ class TransitNetworkEnv(gym.Env):
         with open("transit_system_config.json", "r") as file:
             self.transit_system_config = json.load(file)
 
-        self.hours_of_opperation_per_day = self.transit_system_config["hours_of_opperation_per_day"]
+        self.hours_of_opperation_per_day = self.transit_system_config[
+            "hours_of_opperation_per_day"
+        ]
         self.analysis_period_sec = self.transit_system_config["analysis_period_sec"]
         self.analysis_period_days = self.transit_system_config["analysis_period_days"]
 
         self.current_day = 0
         self.current_time = 0
-        
+
         self.edge_data = {}
         self.nodes_in_routes = {}
 
         self.alpha_1 = 1
         self.alpha_2 = 1
 
-        self.max_nodes = 512
+        self.max_routes = max(self.transit_system_config["max_num_route_per_toplogy"], 10)
+        self.max_route_nodes = max(self.transit_system_config["max_num_stops_per_route"], 10)
+        self.max_nodes = self.max_routes * self.max_route_nodes
         self.max_edges = self.max_nodes * 4
         self.num_node_features = 17
-        self.max_routes = 12
+        
         self.max_exit_nodes_per_route = 2
 
-        self.observation_space = spaces.Dict({
-            "num_routes": spaces.Discrete(self.max_routes),
-            "x": spaces.Box(low=-np.inf, high=np.inf, shape=(self.max_nodes, self.num_node_features), dtype=np.float32),
-            "edge_index": spaces.Box(low=0, high=np.inf, shape=(2, self.max_edges), dtype=np.int64),
-            "edge_attr": spaces.Box(low=0, high=np.inf, shape=(self.max_edges, 1), dtype=np.float32),
+        self.observation_space = spaces.Dict(
+            {
+                "num_routes": spaces.Discrete(self.max_routes),
+                "x": spaces.Box(
+                    low=-np.inf,
+                    high=np.inf,
+                    shape=(self.max_nodes, self.num_node_features),
+                    dtype=np.float32,
+                ),
+                "edge_index": spaces.Box(
+                    low=0, high=np.inf, shape=(2, self.max_edges), dtype=np.int64
+                ),
+                "edge_attr": spaces.Box(
+                    low=0, high=np.inf, shape=(self.max_edges, 1), dtype=np.float32
+                ),
+                **{
+                    **{
+                        f"x_{i}": spaces.Box(
+                            low=-np.inf,
+                            high=np.inf,
+                            shape=(self.max_nodes, self.num_node_features),
+                            dtype=np.float32,
+                        )
+                        for i in range(self.max_routes)
+                    },
+                    **{
+                        f"edge_index_{i}": spaces.Box(
+                            low=0,
+                            high=np.inf,
+                            shape=(2, self.max_edges),
+                            dtype=np.int64,
+                        )
+                        for i in range(self.max_routes)
+                    },
+                    **{
+                        f"edge_attr_{i}": spaces.Box(
+                            low=0,
+                            high=np.inf,
+                            shape=(self.max_edges, 1),
+                            dtype=np.float32,
+                        )
+                        for i in range(self.max_routes)
+                    },
+                },
+            }
+        )
 
-            **{**{f"x_{i}": spaces.Box(low=-np.inf, high=np.inf, shape=(self.max_nodes, self.num_node_features), dtype=np.float32) for i in range(self.max_routes)},
-               **{f"edge_index_{i}": spaces.Box(low=0, high=np.inf, shape=(2, self.max_edges), dtype=np.int64) for i in range(self.max_routes)},
-               **{f"edge_attr_{i}": spaces.Box(low=0, high=np.inf, shape=(self.max_edges, 1), dtype=np.float32) for i in range(self.max_routes)}}
-        })
-
-        self.action_space = spaces.MultiBinary(self.max_routes * self.max_exit_nodes_per_route)
+        self.action_space = spaces.MultiBinary(
+            self.max_routes * self.max_exit_nodes_per_route
+        )
         self.seed = seed
         self.seeds = [self.seed]
-        
+
     def _reset(self, hard_reset=True):
         if hard_reset:
             if self.is_training:
-                self.seed = np.random.randint(0, self.transit_system_config["max_training_seed"])
+                self.seed = np.random.randint(
+                    0, self.transit_system_config["max_training_seed"]
+                )
             else:
-                self.seed =  np.random.randint(self.transit_system_config["max_training_seed"], self.transit_system_config["max_training_seed"] + 
-                                            self.transit_system_config["max_number_of_testing_seeds"])
+                self.seed = np.random.randint(
+                    self.transit_system_config["max_training_seed"],
+                    self.transit_system_config["max_training_seed"]
+                    + self.transit_system_config["max_number_of_testing_seeds"],
+                )
             self.del_data()
 
-        self.transit_system = TransitSystem(**self.transit_system_config, seed=self.seed)
+        self.transit_system = TransitSystem(
+            **self.transit_system_config, seed=self.seed
+        )
         self.num_nodes = len(self.transit_system.topology.nodes)
         self.num_edges = len(self.transit_system.topology.routes)
         self.num_routes = self.transit_system.topology.num_routes
@@ -73,43 +123,69 @@ class TransitNetworkEnv(gym.Env):
         subgraphs = self.get_sub_graphs(obs)
         for subgraph in subgraphs:
             obs.update(subgraph)
-        
+
         if self.num_routes < self.max_routes:
             for i in range(self.max_routes - self.num_routes):
                 sg = {
                     f"x_{self.num_routes + i}": subgraph[f"x_{self.num_routes-1}"],
-                    f"edge_index_{self.num_routes + i}": subgraph[f"edge_index_{self.num_routes-1}"],
-                    f"edge_attr_{self.num_routes + i}": subgraph[f"edge_attr_{self.num_routes-1}"]}
+                    f"edge_index_{self.num_routes + i}": subgraph[
+                        f"edge_index_{self.num_routes-1}"
+                    ],
+                    f"edge_attr_{self.num_routes + i}": subgraph[
+                        f"edge_attr_{self.num_routes-1}"
+                    ],
+                }
                 obs.update(sg)
-        
+
         obs["num_routes"] = self.num_routes
-                
+
         return obs, {}
-    
+
     def reset(self, hard_reset=True, *args, **kwargs):
         done = False
         while not done:
             try:
                 output = self._reset(hard_reset=hard_reset)
                 if hard_reset:
-                    if self.seed not in self.seeds and self.num_routes > 0 and self.transit_system is not None:
+                    if (
+                        self.seed not in self.seeds
+                        and self.num_routes > 0
+                        and self.transit_system is not None
+                    ):
                         self.seeds.append(self.seed)
                         done = True
                     else:
-                        np.random.seed(np.random.randint(0,1000_000))
+                        np.random.seed(np.random.randint(0, 1000_000))
                 else:
                     done = True
             except:
-                np.random.seed(np.random.randint(0,1000_000))
+                print("error:", self.seed)
+                time.sleep(30)
+                np.random.seed(np.random.randint(0, 1000_000))
+                
         return output
-    
+
     def get_updated_node_data(self):
         data = []
 
         buses_data = {}
         for route_id in self.nodes_in_routes.keys():
-            buses_data[route_id] = (len([bus for bus in self.transit_system.buses if bus.service_route == route_id and not bus.reversed]), 
-                                    len([bus for bus in self.transit_system.buses if bus.service_route == route_id and bus.reversed]))
+            buses_data[route_id] = (
+                len(
+                    [
+                        bus
+                        for bus in self.transit_system.buses
+                        if bus.service_route == route_id and not bus.reversed
+                    ]
+                ),
+                len(
+                    [
+                        bus
+                        for bus in self.transit_system.buses
+                        if bus.service_route == route_id and bus.reversed
+                    ]
+                ),
+            )
 
         for node in self.transit_system.topology.nodes:
             x = node.get_array()
@@ -135,14 +211,19 @@ class TransitNetworkEnv(gym.Env):
                         break
 
         nx.set_edge_attributes(graph, self.edge_data)
-        
+
         if len(self.nodes_in_routes) == 0:
-            self.nodes_in_routes = {k:set() for k in sorted(self.transit_system.topology.route_attributes.keys())}
+            self.nodes_in_routes = {
+                k: set()
+                for k in sorted(self.transit_system.topology.route_attributes.keys())
+            }
             for route in routes:
                 self.nodes_in_routes[route.route_id].add(route.node_u.node_id)
                 self.nodes_in_routes[route.route_id].add(route.node_v.node_id)
-            self.nodes_in_routes = {k: list(self.nodes_in_routes[k]) for k in self.nodes_in_routes.keys()}
-        
+            self.nodes_in_routes = {
+                k: list(self.nodes_in_routes[k]) for k in self.nodes_in_routes.keys()
+            }
+
         self.graph: nx.Graph = graph
 
         data = self.get_updated_node_data()
@@ -171,24 +252,57 @@ class TransitNetworkEnv(gym.Env):
             edge_attr = []
             edge_index = []
             for i in range(N):
-                x.append(torch.nn.functional.pad(obs.x[i], (0, 0, 0, self.max_nodes - obs.x[i].shape[0]), mode='constant', value=0))
-                edge_index.append(torch.nn.functional.pad(obs.edge_index[i], (0, self.max_edges - obs.edge_index[i].shape[1], 0, 0), mode='constant', value=0))
-                edge_attr.append(torch.nn.functional.pad(obs.edge_attr[i], (0, 0, 0, self.max_edges - obs.edge_attr[i].shape[0]), mode='constant', value=0))
-            
+                x.append(
+                    torch.nn.functional.pad(
+                        obs.x[i],
+                        (0, 0, 0, self.max_nodes - obs.x[i].shape[0]),
+                        mode="constant",
+                        value=0,
+                    )
+                )
+                edge_index.append(
+                    torch.nn.functional.pad(
+                        obs.edge_index[i],
+                        (0, self.max_edges - obs.edge_index[i].shape[1], 0, 0),
+                        mode="constant",
+                        value=0,
+                    )
+                )
+                edge_attr.append(
+                    torch.nn.functional.pad(
+                        obs.edge_attr[i],
+                        (0, 0, 0, self.max_edges - obs.edge_attr[i].shape[0]),
+                        mode="constant",
+                        value=0,
+                    )
+                )
+
             obs.x = torch.stack(x, dim=0)
             edge_index = torch.stack(edge_index, dim=0)
             edge_attr = torch.stack(edge_attr, dim=0)
         else:
-            obs.x = torch.nn.functional.pad(obs.x, (0, 0, 0, self.max_nodes - obs.x.shape[0]), mode='constant', value=0)
-            obs.edge_index = torch.nn.functional.pad(obs.edge_index, (0, self.max_edges - obs.edge_index.shape[1], 0, 0), mode='constant', value=0)
-            obs.edge_attr = torch.nn.functional.pad(obs.edge_attr, (0, 0, 0, self.max_edges - obs.edge_attr.shape[0]), mode='constant', value=0)        
-        
-        return {"x": obs.x,
-                "edge_index": obs.edge_index,
-                "edge_attr": obs.edge_attr}
-        
+            obs.x = torch.nn.functional.pad(
+                obs.x,
+                (0, 0, 0, self.max_nodes - obs.x.shape[0]),
+                mode="constant",
+                value=0,
+            )
+            obs.edge_index = torch.nn.functional.pad(
+                obs.edge_index,
+                (0, self.max_edges - obs.edge_index.shape[1], 0, 0),
+                mode="constant",
+                value=0,
+            )
+            obs.edge_attr = torch.nn.functional.pad(
+                obs.edge_attr,
+                (0, 0, 0, self.max_edges - obs.edge_attr.shape[0]),
+                mode="constant",
+                value=0,
+            )
 
-    def step(self, action:np.ndarray):
+        return {"x": obs.x, "edge_index": obs.edge_index, "edge_attr": obs.edge_attr}
+
+    def step(self, action: np.ndarray):
         """
         Arguments:
         ---------
@@ -196,31 +310,35 @@ class TransitNetworkEnv(gym.Env):
         these binary variables corresponds to each exit node of the route and the binary variable is to indicate whether to add a bus for that exit node or not.
         Since, a single model is used for all routes, The len of action can be changed from toplogy to toplogy but the mechanism will not fail.
         """
-        action = action[:self.num_routes*2]
+        action = action[: self.num_routes * 2]
 
         for i, decision in enumerate(action):
             if decision == 1:
-                self.transit_system.add_bus_on_route(i // 2, reversed = False if i % 2 == 0 else True)
+                self.transit_system.add_bus_on_route(
+                    i // 2, reversed=False if i % 2 == 0 else True
+                )
 
-        reward, reward_info = self.reward()
+        reward, reward_info = self.reward(action)
         obs: dict = self.update_graph()
-        
+
         truncated = False
         terminated = False
 
         self.transit_system.step(self.current_time)
 
-        if (self.current_time + self.analysis_period_sec) >= self.hours_of_opperation_per_day * 3600:
+        if (
+            self.current_time + self.analysis_period_sec
+        ) >= self.hours_of_opperation_per_day * 3600:
             self.current_day += 1
             self.current_time = 0
             obs, _ = self.reset(hard_reset=False)
         else:
             self.current_time = self.current_time + self.analysis_period_sec
-        
+
         if self.current_day >= self.analysis_period_days:
             truncated = True
 
-        info  = {**reward_info}
+        info = {**reward_info}
 
         if len(self.transit_system.buses) > self.max_num_buses:
             terminated = True
@@ -234,8 +352,13 @@ class TransitNetworkEnv(gym.Env):
             for i in range(self.max_routes - self.num_routes):
                 sg = {
                     f"x_{self.num_routes + i}": subgraph[f"x_{self.num_routes-1}"],
-                    f"edge_index_{self.num_routes + i}": subgraph[f"edge_index_{self.num_routes-1}"],
-                    f"edge_attr_{self.num_routes + i}": subgraph[f"edge_attr_{self.num_routes-1}"]}
+                    f"edge_index_{self.num_routes + i}": subgraph[
+                        f"edge_index_{self.num_routes-1}"
+                    ],
+                    f"edge_attr_{self.num_routes + i}": subgraph[
+                        f"edge_attr_{self.num_routes-1}"
+                    ],
+                }
                 obs.update(sg)
 
         obs["num_routes"] = self.num_routes
@@ -245,86 +368,203 @@ class TransitNetworkEnv(gym.Env):
         if obs["edge_index"].ndim == 2:
             subgraphs: list[dict] = []
             for route_id in self.nodes_in_routes.keys():
-                indices = torch.tensor([self.node_indices[i] for i in self.nodes_in_routes[route_id]]).long()
-                edge_index, edge_attr = subgraph(indices, obs["edge_index"].long(), obs["edge_attr"], relabel_nodes=False, num_nodes=self.num_nodes)
+                indices = torch.tensor(
+                    [self.node_indices[i] for i in self.nodes_in_routes[route_id]]
+                ).long()
+                edge_index, edge_attr = subgraph(
+                    indices,
+                    obs["edge_index"].long(),
+                    obs["edge_attr"],
+                    relabel_nodes=False,
+                    num_nodes=self.num_nodes,
+                )
                 sub_data = Data(
                     x=obs["x"][indices],
                     edge_index=edge_index,
                     edge_attr=edge_attr,
-                    y=None if "y" not in obs else obs["y"][indices]
+                    y=None if "y" not in obs else obs["y"][indices],
                 )
                 subgraphs.append(self.fix_obs_shape(sub_data))
         else:
             subgraphs: list[dict] = []
             for route_id in self.nodes_in_routes.keys():
-                indices = torch.tensor([self.node_indices[i] for i in self.nodes_in_routes[route_id]]).long()
+                indices = torch.tensor(
+                    [self.node_indices[i] for i in self.nodes_in_routes[route_id]]
+                ).long()
                 batch_size = obs["edge_index"].shape[0]
                 sub_datas = []
                 for i in range(batch_size):
-                    edge_index, edge_attr = subgraph(indices, obs["edge_index"][i].long(), obs["edge_attr"][i], relabel_nodes=False, num_nodes=self.num_nodes)
+                    edge_index, edge_attr = subgraph(
+                        indices,
+                        obs["edge_index"][i].long(),
+                        obs["edge_attr"][i],
+                        relabel_nodes=False,
+                        num_nodes=self.num_nodes,
+                    )
                     sub_data = Data(
                         x=obs["x"][i][indices],
                         edge_index=edge_index,
                         edge_attr=edge_attr,
-                        y=None if "y" not in obs else obs["y"][i][indices]
+                        y=None if "y" not in obs else obs["y"][i][indices],
                     )
                     sub_datas.append(self.fix_obs_shape(sub_data))
 
-                sub_data = Data(x=torch.stack([sub_data["x"] for sub_data in sub_datas], dim=0),
-                                edge_index=torch.stack([sub_data["edge_index"] for sub_data in sub_datas], dim=0),
-                                edge_attr=torch.stack([sub_data["edge_attr"] for sub_data in sub_datas], dim=0),
-                                y=None if "y" not in obs else torch.stack([sub_data["y"] for sub_data in sub_datas], dim=0))
+                sub_data = Data(
+                    x=torch.stack([sub_data["x"] for sub_data in sub_datas], dim=0),
+                    edge_index=torch.stack(
+                        [sub_data["edge_index"] for sub_data in sub_datas], dim=0
+                    ),
+                    edge_attr=torch.stack(
+                        [sub_data["edge_attr"] for sub_data in sub_datas], dim=0
+                    ),
+                    y=(
+                        None
+                        if "y" not in obs
+                        else torch.stack(
+                            [sub_data["y"] for sub_data in sub_datas], dim=0
+                        )
+                    ),
+                )
 
                 subgraphs.append(sub_data.to_dict())
 
-        return [{k + f"_{i}": v for k, v in subgraph.items()} for i, subgraph in enumerate(subgraphs)]
+        return [
+            {k + f"_{i}": v for k, v in subgraph.items()}
+            for i, subgraph in enumerate(subgraphs)
+        ]
 
-    def reward(self) -> float:
-        """
-        Reward function here is inspired from the https://arxiv.org/abs/2107.07066
-        """
+    def reward(self, actions) -> float:
 
-        # r = 1 - om/em  if action==0 else om/em (where om/em is demand / bus capacity) (Also penalize the action=0 for waiting time and both actions for stranding time)  Guanqun Ai
-        # since we deal with an for each exit node seperately we will not use the above function directly
-        reward_info = {}
+        sum_reward_1 = 0
+        sum_reward_2 = 0
+        sum_reward_3 = 0
 
+        for i, action in enumerate(actions):
+            route_id = int(i // 2)
+            is_reversed = not (i % 2 == 0)
 
-        # First lets think from the rpespective of passengers
-        total_capacity = sum([bus.capacity - len(bus.passengers) for bus in self.transit_system.buses]) + 1
-        total_demand = sum([len(node.passengers) for node in self.transit_system.topology.nodes])
+            total_capacity = sum(
+                [1]
+                + [
+                    bus.capacity - len(bus.passengers)
+                    for bus in self.transit_system.buses
+                    if bus.service_route == route_id and bus.reversed == is_reversed
+                ]
+            )
 
-        demand_capacity_ratio = total_demand / total_capacity
-        reward_1 = 1 - demand_capacity_ratio # forcing the model to incease the number of buses to achive highest rewards
+            
 
-        reward_info["reward_type_1"] = reward_1
+            total_demand = sum(
+                [1]
+                + [
+                    len(node.passengers)
+                    / 2  # devided by 2 to get only one side (reversed or not)
+                    for node in self.transit_system.topology.nodes
+                    if route_id in node.affliated_route_ids
+                ]
+            )
 
-        num_passengers = [len(node.passengers) for node in self.transit_system.topology.nodes]
-        avg_waiting_time = [np.median([passenger.waiting_time for passenger in node.passengers]) for node, num_passenger in zip(self.transit_system.topology.nodes, num_passengers) if num_passenger > 0]
-        if len(avg_waiting_time) > 0:
-            avg_waiting_time = np.mean(avg_waiting_time)/3600 #hours
-        else:
-            avg_waiting_time = 0
-        
-        avg_stranding_count = [np.median([passenger.stranding_counts for passenger in node.passengers]) for node, num_passenger in zip(self.transit_system.topology.nodes, num_passengers) if num_passenger > 0]
-        if len(avg_stranding_count) > 0:
-            avg_stranding_count = np.mean(avg_stranding_count)
-        else:
-            avg_stranding_count = 0 #counts
+            demand_capacity_ratio = total_demand / total_capacity
+            if (demand_capacity_ratio < 1 and action == 1) or (
+                demand_capacity_ratio > 1 and action == 0
+            ):
+                sum_reward_1 += -1
 
-        reward_2 = - self.alpha_1 * avg_waiting_time - self.alpha_2 * avg_stranding_count #penalizing the long waiting time and standing counts
-        reward_info["reward_type_2"] = reward_2
+            if (demand_capacity_ratio > 0 and action == 1) or (
+                demand_capacity_ratio < 0 and action == 0
+            ):
+                sum_reward_1 += 1
 
-        # Now lets think from the prespectives of opperators
+            num_passengers = [
+                len(node.passengers)
+                for node in self.transit_system.topology.nodes
+                if route_id in node.affliated_route_ids
+            ]
 
-        operator_cost = 0
-        for route_id in self.transit_system.topology.route_attributes.keys():
-            num_buses = sum([1 for bus in self.transit_system.buses if bus.service_route == route_id])
-            operator_cost = num_buses * self.transit_system.topology.route_attributes[route_id]["percent_length"]
+            avg_waiting_time = [
+                np.mean([passenger.waiting_time for passenger in node.passengers])
+                for node, num_passenger in zip(
+                    [
+                        node
+                        for node in self.transit_system.topology.nodes
+                        if route_id in node.affliated_route_ids
+                    ],
+                    num_passengers,
+                )
+                if num_passenger > 0
+            ]
 
-        reward_3 = -operator_cost
-        reward_info["reward_type_3"] = reward_3
-        
-        return reward_1 + reward_2 + reward_3, reward_info
+            avg_stranding_count = [
+                np.mean([passenger.stranding_counts for passenger in node.passengers])
+                for node, num_passenger in zip(
+                    [
+                        node
+                        for node in self.transit_system.topology.nodes
+                        if route_id in node.affliated_route_ids
+                    ],
+                    num_passengers,
+                )
+                if num_passenger > 0
+            ]
+
+            if len(avg_waiting_time) > 0:
+                avg_waiting_time = np.mean(avg_waiting_time)  # seconds
+            else:
+                avg_waiting_time = 0.0
+
+            if len(avg_stranding_count) > 0:
+                avg_stranding_count = np.mean(avg_stranding_count)
+            else:
+                avg_stranding_count = 0  # counts
+
+            if 0 <= avg_waiting_time < 300:
+                sum_reward_2 += -0.25
+            elif 300 <= avg_waiting_time < 600:
+                sum_reward_2 += -1
+            elif 600 <= avg_waiting_time <= 900:
+                sum_reward_2 += -1.5
+            elif avg_waiting_time > 900:
+                sum_reward_2 += -2
+
+            if avg_stranding_count > 0:
+                sum_reward_2 += -2
+
+            distance_traveled = (
+                sum(
+                    [0.0]
+                    + [
+                        bus.avg_speed
+                        * self.transit_system_config["analysis_period_sec"]
+                        for bus in self.transit_system.buses
+                        if bus.service_route == route_id and bus.reversed == is_reversed
+                    ]
+                )
+                / 1000.0
+            )  # km
+
+            fuel_taken = distance_traveled / 1.5  # 1.5 km/leter
+
+            sum_reward_3 += -fuel_taken / len(
+                [
+                    node
+                    for node in self.transit_system.topology.nodes
+                    if route_id in node.affliated_route_ids
+                ]
+            )
+
+        sum_reward_1 = sum_reward_1 / len(actions)
+        sum_reward_2 = sum_reward_2 / len(actions)
+        sum_reward_3 = sum_reward_3 / len(actions)
+
+        reward = sum_reward_1 + sum_reward_2 + sum_reward_3
+
+        reward_info = {
+            "reward_type_1": sum_reward_1,
+            "reward_type_2": sum_reward_2,
+            "reward_type_3": sum_reward_3,
+            "reward": reward,
+        }
+        return reward, reward_info
 
     def render(self):
         pass

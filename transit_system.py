@@ -30,6 +30,7 @@ class TransitSystem:
         max_transit_users_proportion: float = 0.30,
         min_distance: float = 500.0,
         max_distance: float = 2000.0,
+        log_passengers: bool = True,
         seed: int = 0,
         *args,
         **kwargs,
@@ -91,6 +92,7 @@ class TransitSystem:
                 self.add_bus_on_route(route_id, reversed=False)
                 self.add_bus_on_route(route_id, reversed=True)
 
+        self.log_passengers = log_passengers
         self.passenger_logger = PassengerLogger("logs")
 
     def add_bus_on_route(self, route_id: int, reversed: bool):
@@ -151,10 +153,12 @@ class TransitSystem:
             passengers = bus.step(time)
             for passenger in passengers:
                 self.claculate_passenger_parametres(time, passenger)
-                self.passenger_logger.add_to_pool(
-                    seed=self.seed, time=time, **passenger.to_dct()
-                )
-                self.passenger_logger.commit()
+                
+                if self.log_passengers:
+                    self.passenger_logger.add_to_pool(
+                        seed=self.seed, time=time, **passenger.to_dct()
+                    )
+                    self.passenger_logger.commit()
         
         to_drop = []
         for bus in self.buses:

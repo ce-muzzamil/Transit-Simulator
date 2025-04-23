@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 import torch.nn as nn
 from torch_geometric.nn import GATv2Conv, global_mean_pool
@@ -85,7 +84,7 @@ class FeatureExtractor(BaseFeaturesExtractor):
         )
         
     def forward(self, observations):
-        num_routes = np.argmax(observations["num_routes"])
+        num_routes = torch.argmax(observations["num_routes"])
 
         routes = []
         for i in range(num_routes):

@@ -160,7 +160,7 @@ class TransitNetworkEnv(gym.Env):
                     done = True
             except:
                 print("error:", self.seed)
-                time.sleep(30)
+                time.sleep(0.5)
                 np.random.seed(np.random.randint(0, 1000_000))
                 
         return output

@@ -97,7 +97,6 @@ class Topology:
 
         self.num_routes = len(self.route_ids)
 
-    
     def fix_route_clusters(self) -> None:
         """
         Fixes if there is discontinuity in the topology. It makes sure all the nodes are accessible to each other
@@ -105,19 +104,62 @@ class Topology:
         nodes = {}
         for (u, _, data) in self.topology.edges(data=True):
             if data["label"] not in nodes:
-                nodes[data["label"]] = u
+                nodes[data["label"]] = []
+            nodes[data["label"]].append(u)
 
+        for route_id in nodes.keys():
+            rnodes = nodes[route_id]
+            subgraph: nx.Graph = nx.subgraph(self.topology, rnodes)
+            subgraph = nx.Graph(subgraph)
+            to_drop = []
+            for u, v, data in subgraph.edges(data=True):
+                if data["label"] != route_id:
+                    to_drop.append((u, v))
+                    to_drop.append((v, u))
+
+            subgraph.remove_edges_from(to_drop)
+            components = list(nx.connected_components(subgraph))
+            
+            if len(components) > 1:
+                all_exit_nodes = []
+                for component in components:
+                    rsubgraph: nx.Graph = nx.subgraph(subgraph, component)
+                    rsubgraph = nx.Graph(rsubgraph)
+                    neighbors = {
+                            node: list(nx.neighbors(rsubgraph, node)) for node in component
+                        }
+
+                    exit_nodes = [
+                            node_id for node_id in component if len(neighbors[node_id]) == 1
+                        ]
+                    all_exit_nodes.append(exit_nodes)
+
+                for i in range(len(all_exit_nodes)-1):
+                    is_connected = False
+                    for j in range(i+1, len(all_exit_nodes)):
+                        if is_connected:
+                            break
+                        
+                        for u in all_exit_nodes[i]:
+                            if is_connected:
+                                break
+
+                            for v in all_exit_nodes[j]:
+                                if not self.topology.has_edge(u, v):
+                                    self.topology.add_edge(u, v, label=route_id)
+                                    is_connected = True
+                                    break
+                                
         route_clusters = {}
-
         for route_id_1 in nodes.keys():
             for route_id_2 in nodes.keys():
                 if route_id_1 != route_id_2:
-                    if nx.has_path(self.topology, nodes[route_id_1], nodes[route_id_2]):
+                    if nx.has_path(self.topology, nodes[route_id_1][0], nodes[route_id_2][0]):
                         if route_id_1 not in route_clusters:
                             route_clusters[route_id_1] = [route_id_1]
                         route_clusters[route_id_1].append(route_id_2)
             
-            if np.isin(list(nodes.keys()), route_clusters[route_id_1]).all():
+            if route_id_1 in route_clusters and np.isin(list(nodes.keys()), route_clusters[route_id_1]).all():
                 return
         
         def sort_and_tuple(x):
@@ -280,9 +322,10 @@ class Topology:
         self.get_graph()
         self.fix_route_clusters()
         self.remove_isolated_nodes()
-        self.fix_route_loop_and_discontinuity()
         self.find_neighbors()
         self.fix_splinter_issue()
+        self.fix_route_loop_and_discontinuity()
+        self.find_neighbors()
         self.initiallize_traffic_data()
         self.process_nodes_and_routes()
     
@@ -338,7 +381,41 @@ class Topology:
                 selected = np.random.choice(len(options))
                 u, v = options[selected]
                 self.topology.add_edge(u, v, label=route_id)
-                            
+            
+            subgraph: nx.Graph = nx.subgraph(self.topology, nodes)
+            subgraph = nx.Graph(subgraph)
+            to_drop = []
+            for u, v, data in subgraph.edges(data=True):
+                if data["label"] != route_id:
+                    to_drop.append((u, v))
+                    to_drop.append((v, u))
+
+            subgraph.remove_edges_from(to_drop)
+
+            neighbors = {node: list(nx.neighbors(subgraph, node)) for node in nodes}
+            looped_nodes = [node for node in neighbors.keys() if len(neighbors[node])>2]
+            
+            
+            for u in looped_nodes:
+                for v in neighbors[u]:
+                    temp_subgraph = subgraph.copy()
+
+                    if u != v:
+                        temp_subgraph.remove_edge(u, v)
+
+                        if len(list(nx.connected_components(temp_subgraph))) == 1:
+                            self.topology.remove_edge(u, v)
+
+                            subgraph: nx.Graph = nx.subgraph(self.topology, nodes)
+                            subgraph = nx.Graph(subgraph)
+                            to_drop = []
+                            for u_, v_, data in subgraph.edges(data=True):
+                                if data["label"] != route_id:
+                                    to_drop.append((u_, v_))
+                                    to_drop.append((v_, u_))
+
+                            subgraph.remove_edges_from(to_drop)
+
 
     def process_nodes_and_routes(self) -> None:
         """

@@ -87,11 +87,17 @@ class Bus:
         The trajectory is the itinerary (an ordered list) for the bus that includes all the nodes the bus is going to visit.
         Based on this list and the `Node` data and the traectory, this method calculates the distances between all the `to_go` nodes.
         """
-        if self.reversed:
-            self.routes = self.routes[::-1]
-            current_node_id = min(self.exit_nodes)
-        else:
-            current_node_id = max(self.exit_nodes)
+        try:
+            if self.reversed:
+                self.routes = self.routes[::-1]
+                current_node_id = min(self.exit_nodes)
+            else:
+                current_node_id = max(self.exit_nodes)
+        except:
+            # self.topology.show(show_label=self.service_route)
+            raise Exception("Error in Bus initiallization", 
+                            f"{self.service_route=}, {self.topology.seed=}")
+
         self.current_node = self.get_node_by_id(current_node_id)
 
         node_u = self.current_node

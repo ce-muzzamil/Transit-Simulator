@@ -148,8 +148,7 @@ class TransitNetworkEnv(gym.Env):
                 output = self._reset(hard_reset=hard_reset)
                 if hard_reset:
                     if (
-                        self.seed not in self.seeds
-                        and self.num_routes > 0
+                        self.num_routes > 0
                         and self.transit_system is not None
                     ):
                         self.seeds.append(self.seed)

@@ -159,7 +159,7 @@ class TransitNetworkEnv(gym.Env):
                 else:
                     done = True
             except:
-                print("error:", self.seed)
+                # print("error:", self.seed)
                 time.sleep(0.5)
                 np.random.seed(int(str(time.time()).split(".")[-1]))
                 

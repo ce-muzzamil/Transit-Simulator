@@ -245,7 +245,7 @@ class GNNPolicy(ActorCriticPolicy):
     
     def set_training_mode(self, mode: bool) -> None:
         super().set_training_mode(mode)
-        self.extractor.train(mode)
+        self.features_extractor.train(mode)
         self.actor.train(mode)
         self.critic.train(mode)
         self.value_net.train(mode)

@@ -9,7 +9,8 @@ class GATv2FeatureExtractor(nn.Module):
     def __init__(self, observation_space, 
                  hidden_dim=128, 
                  num_heads=4, 
-                 out_dim=256):
+                 out_dim=256,
+                 dropout_rate=0.0):
         super().__init__()
 
         in_channels = observation_space["x"].shape[1]
@@ -20,7 +21,8 @@ class GATv2FeatureExtractor(nn.Module):
             out_channels=hidden_dim,
             heads=num_heads,
             concat=True,
-            edge_dim=edge_dim 
+            edge_dim=edge_dim,
+            dropout=dropout_rate
         )
 
         self.gat2 = GATv2Conv(
@@ -28,7 +30,8 @@ class GATv2FeatureExtractor(nn.Module):
             out_channels=out_dim,
             heads=1,
             concat=True,
-            edge_dim=edge_dim
+            edge_dim=edge_dim,
+            dropout=dropout_rate
         )
 
         self.dropout = nn.Dropout(0.1)
@@ -64,23 +67,160 @@ class GATv2FeatureExtractor(nn.Module):
 
         x = self.process_for_gat(self.gat2, x, edge_index, edge_attr)
         x = torch.relu(x) # N,L,E
-
-        x = global_mean_pool(x, batch) #N,E
         
         return x
+    
+
+class EncoderLayer(nn.Module):
+    def __init__(self, embed_size, num_heads, dropout_rate=0.0):
+        super().__init__()
+        
+        self.mha = nn.MultiheadAttention(embed_dim=embed_size, 
+                                         num_heads=num_heads,
+                                         dropout=dropout_rate,
+                                         batch_first=True)
+        
+        self.norm_1 = nn.LayerNorm(embed_size)
+        self.dropout_1 = nn.Dropout(dropout_rate)
+
+        self.ffn = nn.Sequential(
+            nn.Linear(embed_size, embed_size),
+            nn.ReLU(),
+            nn.Linear(embed_size, embed_size)
+        )
+
+        self.norm_2 = nn.LayerNorm(embed_size)
+        self.dropout_2 = nn.Dropout(dropout_rate)
+    
+    def forward(self, x):
+        # Self-attention
+        attn_output, _ = self.mha(x, x, x)
+        x = self.norm_1(x + self.dropout_1(attn_output))
+
+        # Feed Forward Network
+        ffn_output = self.ffn(x)
+        x = self.norm_2(x + self.dropout_2(ffn_output))
+
+        return x
+
+class DecoderLayer(nn.Module):
+    def __init__(self, embed_size, num_heads, dropout_rate=0.0):
+        super().__init__()
+
+        # Masked Self-attention
+        self.self_mha = nn.MultiheadAttention(embed_dim=embed_size,
+                                               num_heads=num_heads,
+                                               dropout=dropout_rate,
+                                               batch_first=True)
+
+        self.norm_1 = nn.LayerNorm(embed_size)
+        self.dropout_1 = nn.Dropout(dropout_rate)
+
+        # Cross-attention with encoder output
+        self.cross_mha = nn.MultiheadAttention(embed_dim=embed_size,
+                                                num_heads=num_heads,
+                                                dropout=dropout_rate,
+                                                batch_first=True)
+        
+        self.norm_2 = nn.LayerNorm(embed_size)
+        self.dropout_2 = nn.Dropout(dropout_rate)
+
+        # Feed Forward Network
+        self.ffn = nn.Sequential(
+            nn.Linear(embed_size, embed_size),
+            nn.ReLU(),
+            nn.Linear(embed_size, embed_size)
+        )
+
+        self.norm_3 = nn.LayerNorm(embed_size)
+        self.dropout_3 = nn.Dropout(dropout_rate)
+
+    def forward(self, x, enc_output):
+        # Masked Self-Attention (future masking)
+        self_attn_output, _ = self.self_mha(x, x, x)
+        x = self.norm_1(x + self.dropout_1(self_attn_output))
+
+        # Cross-Attention (attend to encoder output)
+        cross_attn_output, _ = self.cross_mha(x, enc_output, enc_output)
+        x = self.norm_2(x + self.dropout_2(cross_attn_output))
+
+        # Feed Forward Network
+        ffn_output = self.ffn(x)
+        x = self.norm_3(x + self.dropout_3(ffn_output))
+
+        return x
+
+class Transformer(nn.Module):
+    def __init__(self, 
+                 embed_size, 
+                 num_heads, 
+                 num_encoder_layers, 
+                 num_decoder_layers, 
+                 dropout_rate=0.0):
+        
+        super().__init__()
+
+        self.encoder_layers = nn.ModuleList([
+            EncoderLayer(embed_size, num_heads, dropout_rate)
+            for _ in range(num_encoder_layers)
+        ])
+
+        self.decoder_layers = nn.ModuleList([
+            DecoderLayer(embed_size, num_heads, dropout_rate)
+            for _ in range(num_decoder_layers)
+        ])
+
+    def forward(self, src, tgt):
+        # src: (N, L_src, E)
+        # tgt: (N, L_tgt, E)
+
+        enc_output = src
+        for layer in self.encoder_layers:
+            enc_output = layer(enc_output)
+
+        dec_output = tgt
+        for layer in self.decoder_layers:
+            dec_output = layer(dec_output, enc_output)
+
+        return dec_output
+
 
 class FeatureExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space, hidden_dim=128, num_heads=4, out_dim=256):
-        super().__init__(observation_space, out_dim)
-        self.feature_dim = out_dim
-        self.topology = GATv2FeatureExtractor(observation_space, hidden_dim, num_heads, out_dim)
-        self.route = GATv2FeatureExtractor(observation_space, hidden_dim, num_heads, out_dim)
-        self.fcn = nn.Sequential(
-            nn.Linear(2*out_dim, out_dim),
+    def __init__(self, 
+                 observation_space, 
+                 gnn_hidden_dim=128, 
+                 gnn_num_heads=4, 
+                 embed_size=256, 
+                 transformer_num_heads=4, 
+                 num_encoder_layers=6, 
+                 num_decoder_layers=6, 
+                 dropout_rate=0.0
+                 ):
+        super().__init__(observation_space, embed_size)
+
+        self.feature_dim = embed_size
+        self.topology = GATv2FeatureExtractor(observation_space, 
+                                              gnn_hidden_dim, 
+                                              gnn_num_heads, 
+                                              embed_size,
+                                              dropout_rate=dropout_rate)
+        
+        self.route = GATv2FeatureExtractor(observation_space, 
+                                           gnn_hidden_dim, 
+                                           gnn_num_heads, 
+                                           embed_size,
+                                           dropout_rate=dropout_rate)
+        
+        self.transformer = Transformer(embed_size=embed_size, 
+                                       num_heads=transformer_num_heads, 
+                                       num_encoder_layers=num_encoder_layers, 
+                                       num_decoder_layers=num_decoder_layers, 
+                                       dropout_rate=dropout_rate)
+        
+        self.ffn = nn.Sequential(
+            nn.Linear(embed_size, embed_size),
             nn.ReLU(),
-            nn.Linear(out_dim, out_dim),
-            nn.ReLU(),
-            nn.Linear(out_dim, out_dim),
+            nn.Linear(embed_size, embed_size),
         )
         
     def forward(self, observations):
@@ -98,15 +238,23 @@ class FeatureExtractor(BaseFeaturesExtractor):
                         "edge_index": observations["edge_index"],
                         "edge_attr": observations["edge_attr"]}
 
-        topology_vector = self.topology(observations) #N,E
-        topology_vector = topology_vector.unsqueeze(1).repeat(1, len(routes), 1) # N, R, E
-        routes_vectors = torch.stack([self.route(route) for route in routes], 1) # N, R, E
+        topology_vector = self.topology(observations) #N,L,E
+        routes_vectors = [self.route(route) for route in routes] # R x (N, L, E)
 
-        out = torch.cat([topology_vector, routes_vectors], dim=-1)
-        out = self.fcn(out) #N,R,E
+        outs = []
+        for i in range(len(routes_vectors)):
+            if routes_vectors[i].ndim == 2:
+                routes_vectors[i] = routes_vectors[i].unsqueeze(0)
+            if topology_vector.ndim == 2:
+                topology_vector = topology_vector.unsqueeze(0)
+            out = self.transformer(topology_vector, routes_vectors[i]) # N,L,E
+            out = torch.mean(out, dim=1) # N,E
+            outs.append(out)
+        
+        out = torch.stack(outs, dim=1) # N,R,E
+        out = self.ffn(out) #N,R,E
         return out
     
-
 class Actor(nn.Module):
     def __init__(self, feature_dim: int, num_actions: int):
         super().__init__()

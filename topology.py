@@ -640,6 +640,9 @@ class Topology:
         """
         Displays the created topology using `nx.spring_layout`
         """
+        if ax is None:
+            ax = plt.subplot(1,1,1)
+
         unique_labels = list(set(data["label"] for _, _, data in self.topology.edges(data=True)))
         colors = plt.get_cmap('tab10', len(unique_labels))
         label_color_map = {label: colors(i) for i, label in enumerate(unique_labels)}
@@ -656,18 +659,37 @@ class Topology:
         
         if show_label is None:
             for label in unique_labels:
-                edges_in_group = [(u, v) for u, v, data in self.topology.edges(data=True) if data["label"] == label]
-                nx.draw_networkx_edges(self.topology, pos, edgelist=edges_in_group, edge_color=label_color_map[label], width=2, label=label)
+                edges_in_group = [(u, v) 
+                                  for u, v, data in self.topology.edges(data=True) 
+                                  if data["label"] == label]
+                
+                nx.draw_networkx_edges(self.topology, 
+                                       pos, 
+                                       edgelist=edges_in_group, 
+                                       edge_color=label_color_map[label], 
+                                       width=2, 
+                                       label=label,
+                                       ax=ax)
         else:
             label = show_label
-            edges_in_group = [(u, v) for u, v, data in self.topology.edges(data=True) if data["label"] == label]
-            nx.draw_networkx_edges(self.topology, pos, edgelist=edges_in_group, edge_color=label_color_map[label], width=2, label=label)
+            edges_in_group = [(u, v) 
+                              for u, v, data in self.topology.edges(data=True) 
+                              if data["label"] == label]
+            
+            nx.draw_networkx_edges(self.topology, 
+                                   pos, 
+                                   edgelist=edges_in_group, 
+                                   edge_color=label_color_map[label], 
+                                   width=2, label=label,
+                                   ax=ax
+                                   )
 
         handles = [plt.Line2D([0], [0], color=label_color_map[label], lw=2, label=label) for label in unique_labels]
-        plt.legend(handles=handles, title="Edge Labels", loc="upper left")
+        ax.legend(handles=handles, title="Edge Labels", loc="upper left")
+        ax.set_title("Network Topology with Edge Groups Colored")
 
-        plt.title("Network Topology with Edge Groups Colored")
-        plt.show()
+        if ax is None:
+            plt.show()
 
     def show_report(self) -> None:
         """

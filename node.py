@@ -291,7 +291,6 @@ class Node:
         12- time elapsed since last bus
         13- number of waiting passengers
         14- number of stranding passengers
-        15- zone type
         """
 
         return {
@@ -331,6 +330,7 @@ class Node:
         13- number of waiting passengers
         14- number of stranding passengers
         15- zone type
+        16- time
         """
 
         return np.array(list(self.get_dct().values()))

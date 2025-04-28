@@ -6,15 +6,15 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.policies import ActorCriticPolicy
 
 class GATv2FeatureExtractor(nn.Module):
-    def __init__(self, observation_space, 
+    def __init__(self, 
+                 in_channels,
+                 edge_dim,
                  hidden_dim=128, 
                  num_heads=4, 
                  out_dim=256,
                  dropout_rate=0.0):
         super().__init__()
 
-        in_channels = observation_space["x"].shape[1]
-        edge_dim = observation_space["edge_attr"].shape[-1]
 
         self.gat1 = GATv2Conv(
             in_channels=in_channels,
@@ -199,14 +199,16 @@ class FeatureExtractor(BaseFeaturesExtractor):
         super().__init__(observation_space, embed_size)
 
         self.feature_dim = embed_size
-        self.topology = GATv2FeatureExtractor(observation_space, 
+        self.topology = GATv2FeatureExtractor(observation_space["x"].shape[-1],
+                                              observation_space["edge_attr"].shape[-1],
                                               gnn_hidden_dim, 
                                               gnn_num_heads, 
                                               embed_size,
                                               dropout_rate=dropout_rate)
         
-        self.route = GATv2FeatureExtractor(observation_space, 
-                                           gnn_hidden_dim, 
+        self.route = GATv2FeatureExtractor(observation_space["x_0"].shape[-1],
+                                           observation_space["edge_attr_0"].shape[-1],
+                                           gnn_hidden_dim,
                                            gnn_num_heads, 
                                            embed_size,
                                            dropout_rate=dropout_rate)
@@ -237,7 +239,7 @@ class FeatureExtractor(BaseFeaturesExtractor):
         observations = {"x": observations["x"],
                         "edge_index": observations["edge_index"],
                         "edge_attr": observations["edge_attr"]}
-
+        
         topology_vector = self.topology(observations) #N,L,E
         routes_vectors = [self.route(route) for route in routes] # R x (N, L, E)
 

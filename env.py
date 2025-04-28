@@ -36,8 +36,9 @@ class TransitNetworkEnv(gym.Env):
         self.max_routes = max(self.transit_system_config["max_num_route_per_toplogy"], 10)
         self.max_route_nodes = max(self.transit_system_config["max_num_stops_per_route"], 10)
         self.max_nodes = self.max_routes * self.max_route_nodes
+        self.max_route_edges = self.max_route_nodes * 4
         self.max_edges = self.max_nodes * 4
-        self.num_node_features = 17
+        self.num_node_features = 18
         
         self.max_exit_nodes_per_route = 2
 
@@ -61,7 +62,7 @@ class TransitNetworkEnv(gym.Env):
                         f"x_{i}": spaces.Box(
                             low=-np.inf,
                             high=np.inf,
-                            shape=(self.max_nodes, self.num_node_features),
+                            shape=(self.max_route_nodes, self.num_node_features),
                             dtype=np.float32,
                         )
                         for i in range(self.max_routes)
@@ -70,7 +71,7 @@ class TransitNetworkEnv(gym.Env):
                         f"edge_index_{i}": spaces.Box(
                             low=0,
                             high=np.inf,
-                            shape=(2, self.max_edges),
+                            shape=(2, self.max_route_edges),
                             dtype=np.int64,
                         )
                         for i in range(self.max_routes)
@@ -79,7 +80,7 @@ class TransitNetworkEnv(gym.Env):
                         f"edge_attr_{i}": spaces.Box(
                             low=0,
                             high=np.inf,
-                            shape=(self.max_edges, 1),
+                            shape=(self.max_route_edges, 1),
                             dtype=np.float32,
                         )
                         for i in range(self.max_routes)
@@ -195,6 +196,7 @@ class TransitNetworkEnv(gym.Env):
             else:
                 x = np.append(x, -1)
                 x = np.append(x, -1)
+            x = np.append(x, np.sin(2*np.pi*self.current_time/(self.hours_of_opperation_per_day*3600)))
             data.append(x.astype(np.float32))
 
         return data
@@ -207,7 +209,7 @@ class TransitNetworkEnv(gym.Env):
             for edge in graph.edges():
                 for route in routes:
                     if route.node_pair_id == edge or route.node_pair_id[::-1] == edge:
-                        self.edge_data[edge] = {"edge_attr": route.distance}
+                        self.edge_data[edge] = {"edge_attr": route.distance/1000.0}
                         break
 
         nx.set_edge_attributes(graph, self.edge_data)
@@ -242,7 +244,14 @@ class TransitNetworkEnv(gym.Env):
         obs.x = torch.from_numpy(np.stack(data, axis=0))
         return self.fix_obs_shape(obs)
 
-    def fix_obs_shape(self, obs: Data):
+    def fix_obs_shape(self, obs: Data, is_subgraph=False):
+        if is_subgraph:
+            max_edges = self.max_route_edges
+            max_nodes = self.max_route_nodes
+        else:
+            max_edges = self.max_edges
+            max_nodes = self.max_nodes
+
         if obs.edge_attr.ndim == 1:
             obs.edge_attr = obs.edge_attr.unsqueeze(1)
 
@@ -255,7 +264,7 @@ class TransitNetworkEnv(gym.Env):
                 x.append(
                     torch.nn.functional.pad(
                         obs.x[i],
-                        (0, 0, 0, self.max_nodes - obs.x[i].shape[0]),
+                        (0, 0, 0, max_nodes - obs.x[i].shape[0]),
                         mode="constant",
                         value=0,
                     )
@@ -263,7 +272,7 @@ class TransitNetworkEnv(gym.Env):
                 edge_index.append(
                     torch.nn.functional.pad(
                         obs.edge_index[i],
-                        (0, self.max_edges - obs.edge_index[i].shape[1], 0, 0),
+                        (0, max_edges - obs.edge_index[i].shape[1], 0, 0),
                         mode="constant",
                         value=0,
                     )
@@ -271,7 +280,7 @@ class TransitNetworkEnv(gym.Env):
                 edge_attr.append(
                     torch.nn.functional.pad(
                         obs.edge_attr[i],
-                        (0, 0, 0, self.max_edges - obs.edge_attr[i].shape[0]),
+                        (0, 0, 0, max_edges - obs.edge_attr[i].shape[0]),
                         mode="constant",
                         value=0,
                     )
@@ -283,19 +292,19 @@ class TransitNetworkEnv(gym.Env):
         else:
             obs.x = torch.nn.functional.pad(
                 obs.x,
-                (0, 0, 0, self.max_nodes - obs.x.shape[0]),
+                (0, 0, 0, max_nodes - obs.x.shape[0]),
                 mode="constant",
                 value=0,
             )
             obs.edge_index = torch.nn.functional.pad(
                 obs.edge_index,
-                (0, self.max_edges - obs.edge_index.shape[1], 0, 0),
+                (0, max_edges - obs.edge_index.shape[1], 0, 0),
                 mode="constant",
                 value=0,
             )
             obs.edge_attr = torch.nn.functional.pad(
                 obs.edge_attr,
-                (0, 0, 0, self.max_edges - obs.edge_attr.shape[0]),
+                (0, 0, 0, max_edges - obs.edge_attr.shape[0]),
                 mode="constant",
                 value=0,
             )
@@ -375,7 +384,7 @@ class TransitNetworkEnv(gym.Env):
                     indices,
                     obs["edge_index"].long(),
                     obs["edge_attr"],
-                    relabel_nodes=False,
+                    relabel_nodes=True,
                     num_nodes=self.num_nodes,
                 )
                 sub_data = Data(
@@ -384,7 +393,7 @@ class TransitNetworkEnv(gym.Env):
                     edge_attr=edge_attr,
                     y=None if "y" not in obs else obs["y"][indices],
                 )
-                subgraphs.append(self.fix_obs_shape(sub_data))
+                subgraphs.append(self.fix_obs_shape(sub_data, is_subgraph=True))
         else:
             subgraphs: list[dict] = []
             for route_id in self.nodes_in_routes.keys():
@@ -398,7 +407,7 @@ class TransitNetworkEnv(gym.Env):
                         indices,
                         obs["edge_index"][i].long(),
                         obs["edge_attr"][i],
-                        relabel_nodes=False,
+                        relabel_nodes=True,
                         num_nodes=self.num_nodes,
                     )
                     sub_data = Data(
@@ -407,7 +416,7 @@ class TransitNetworkEnv(gym.Env):
                         edge_attr=edge_attr,
                         y=None if "y" not in obs else obs["y"][i][indices],
                     )
-                    sub_datas.append(self.fix_obs_shape(sub_data))
+                    sub_datas.append(self.fix_obs_shape(sub_data, is_subgraph=True))
 
                 sub_data = Data(
                     x=torch.stack([sub_data["x"] for sub_data in sub_datas], dim=0),

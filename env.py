@@ -565,7 +565,7 @@ class TransitNetworkEnv(gym.Env):
         sum_reward_2 = sum_reward_2 / len(actions)
         sum_reward_3 = sum_reward_3 / len(actions)
 
-        reward = sum_reward_1 + sum_reward_2 + sum_reward_3
+        reward = sum_reward_1 + sum_reward_2 #+ sum_reward_3
 
         reward_info = {
             "reward_type_1": sum_reward_1,

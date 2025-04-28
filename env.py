@@ -452,43 +452,29 @@ class TransitNetworkEnv(gym.Env):
             route_id = int(i // 2)
             is_reversed = not (i % 2 == 0)
 
-            total_capacity = sum(
-                [1]
-                + [
-                    bus.capacity - len(bus.passengers)
-                    for bus in self.transit_system.buses
-                    if bus.service_route == route_id and bus.reversed == is_reversed
-                ]
-            )
+            reward_1 = 0
+            node_counts = 0
+            num_passengers = []
 
-            
+            for node in self.transit_system.topology.nodes:
+                if route_id in node.affliated_route_ids:
+                    num_passengers.append(len(node.passengers))
+                    demand = len(node.passengers)/2 + 1 # devided by 2 to get approx only one side (reversed or not)
+                    capacity = 1
+                    for bus in self.transit_system.buses:
+                        if bus.service_route == route_id and bus.reversed == is_reversed:
+                            if node in bus.to_go:
+                                capacity += bus.capacity - len(bus.passengers)
 
-            total_demand = sum(
-                [1]
-                + [
-                    len(node.passengers)
-                    / 2  # devided by 2 to get only one side (reversed or not)
-                    for node in self.transit_system.topology.nodes
-                    if route_id in node.affliated_route_ids
-                ]
-            )
+                    demand_capacity_ratio = demand / capacity
+                    node_counts += 1
 
-            demand_capacity_ratio = total_demand / total_capacity
-            if (demand_capacity_ratio < 1 and action == 1) or (
-                demand_capacity_ratio > 1 and action == 0
-            ):
-                sum_reward_1 += -1
+                    if (demand_capacity_ratio < 1 and action == 1) or (
+                        demand_capacity_ratio > 1 and action == 0
+                    ):
+                        reward_1 += -2
 
-            if (demand_capacity_ratio > 0 and action == 1) or (
-                demand_capacity_ratio < 0 and action == 0
-            ):
-                sum_reward_1 += 1
-
-            num_passengers = [
-                len(node.passengers)
-                for node in self.transit_system.topology.nodes
-                if route_id in node.affliated_route_ids
-            ]
+            sum_reward_1 += reward_1 / node_counts if node_counts > 0 else 0   
 
             avg_waiting_time = [
                 np.mean([passenger.waiting_time for passenger in node.passengers])
@@ -526,46 +512,30 @@ class TransitNetworkEnv(gym.Env):
             else:
                 avg_stranding_count = 0  # counts
 
-            if 0 <= avg_waiting_time < 300:
-                sum_reward_2 += -0.25
-            elif 300 <= avg_waiting_time < 600:
+            if 0 < avg_waiting_time < 300:
                 sum_reward_2 += -1
-            elif 600 <= avg_waiting_time <= 900:
-                sum_reward_2 += -1.5
-            elif avg_waiting_time > 900:
+            elif 300 <= avg_waiting_time < 600:
                 sum_reward_2 += -2
+            elif 600 <= avg_waiting_time <= 900:
+                sum_reward_2 += -3
+            elif avg_waiting_time > 900:
+                sum_reward_2 += -4
 
             if avg_stranding_count > 0:
-                sum_reward_2 += -2
+                sum_reward_2 += -5
 
-            distance_traveled = (
-                sum(
-                    [0.0]
-                    + [
-                        bus.avg_speed
-                        * self.transit_system_config["analysis_period_sec"]
-                        for bus in self.transit_system.buses
-                        if bus.service_route == route_id and bus.reversed == is_reversed
-                    ]
-                )
-                / 1000.0
-            )  # km
+            if action == 1:
+                expence_of_bus_journey = 7  # 1.5 km/leter
+            else:
+                expence_of_bus_journey = 0
 
-            fuel_taken = distance_traveled / 1.5  # 1.5 km/leter
-
-            sum_reward_3 += -fuel_taken / len(
-                [
-                    node
-                    for node in self.transit_system.topology.nodes
-                    if route_id in node.affliated_route_ids
-                ]
-            )
+            sum_reward_3 += -expence_of_bus_journey
 
         sum_reward_1 = sum_reward_1 / len(actions)
         sum_reward_2 = sum_reward_2 / len(actions)
         sum_reward_3 = sum_reward_3 / len(actions)
 
-        reward = sum_reward_1 + sum_reward_2 #+ sum_reward_3
+        reward = sum_reward_1 + sum_reward_2 + sum_reward_3
 
         reward_info = {
             "reward_type_1": sum_reward_1,

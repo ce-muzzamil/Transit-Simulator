@@ -477,7 +477,7 @@ class TransitNetworkEnv(gym.Env):
             sum_reward_1 += reward_1 / node_counts if node_counts > 0 else 0   
 
             avg_waiting_time = [
-                np.mean([passenger.waiting_time for passenger in node.passengers])
+                np.max([passenger.waiting_time for passenger in node.passengers])
                 for node, num_passenger in zip(
                     [
                         node
@@ -490,7 +490,7 @@ class TransitNetworkEnv(gym.Env):
             ]
 
             avg_stranding_count = [
-                np.mean([passenger.stranding_counts for passenger in node.passengers])
+                np.max([passenger.stranding_counts for passenger in node.passengers])
                 for node, num_passenger in zip(
                     [
                         node

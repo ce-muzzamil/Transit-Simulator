@@ -317,7 +317,6 @@ class TransitNetworkEnv(gym.Env):
         these binary variables corresponds to each exit node of the route and the binary variable is to indicate whether to add a bus for that exit node or not.
         Since, a single model is used for all routes, The len of action can be changed from toplogy to toplogy but the mechanism will not fail.
         """
-        print(self.current_time)
         action = action[: self.num_routes * 2]
 
         for i, decision in enumerate(action):
@@ -502,7 +501,7 @@ class TransitNetworkEnv(gym.Env):
             ]
 
             if len(avg_waiting_time) > 0:
-                avg_waiting_time = np.mean(avg_waiting_time)//15.  # minutes
+                avg_waiting_time = np.mean(avg_waiting_time)/60.  # minutes
             else:
                 avg_waiting_time = 0.0
 
@@ -511,13 +510,10 @@ class TransitNetworkEnv(gym.Env):
             else:
                 avg_stranding_count = 0  # counts
 
-            if avg_waiting_time == 0:
-                pass
-            else:
-                sum_reward_2 += -avg_waiting_time/60
+            if avg_waiting_time > 15 and action == 0:
+                sum_reward_2 += -avg_waiting_time//15
             
-
-            if avg_stranding_count > 0:
+            if avg_stranding_count > 0 and action == 0:
                 sum_reward_2 += -2
 
             if action == 1:

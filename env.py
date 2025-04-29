@@ -159,7 +159,7 @@ class TransitNetworkEnv(gym.Env):
                 else:
                     done = True
             except:
-                print("error:", self.seed)
+                # print("error:", self.seed)
                 time.sleep(0.5)
                 np.random.seed(int(str(time.time()).split(".")[-1]))
         return output
@@ -235,6 +235,7 @@ class TransitNetworkEnv(gym.Env):
     def del_data(self):
         self.edge_data = {}
         self.nodes_in_routes = {}
+        self.current_day = 0
 
     def update_graph(self):
         data = self.get_updated_node_data()
@@ -510,7 +511,7 @@ class TransitNetworkEnv(gym.Env):
             else:
                 avg_stranding_count = 0  # counts
 
-            if avg_waiting_time > 15 and action == 0:
+            if avg_waiting_time > 15:
                 sum_reward_2 += -avg_waiting_time//15
             
             if avg_stranding_count > 0 and action == 0:

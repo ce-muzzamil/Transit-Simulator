@@ -163,10 +163,9 @@ class Node:
         for passenger in self.passengers:
             passenger.waiting_time += self.analysis_period_sec
             
-        self.step_counter += 1
-        if len(self.passengers) > 0:
-            self.avg_waiting_time = np.mean([passenger.waiting_time for passenger in self.passengers])
-            self.avg_stranding_counts = np.mean([passenger.stranding_counts for passenger in self.passengers])
+        self.step_counter += self.analysis_period_sec
+        self.avg_waiting_time = np.max([0]+[passenger.waiting_time for passenger in self.passengers])
+        self.avg_stranding_counts = np.max([0]+[passenger.stranding_counts for passenger in self.passengers])
         
 
     def bus_arrived(self, time: int, bus: Bus) -> list[Passenger]:
@@ -277,15 +276,15 @@ class Node:
             "population": self.population / (np.pi * 4 * 1000),
             "transit_users": self.transit_users / (np.pi * 4 * 1000),
             "is_transfer": float(self.is_transfer),
-            "min_distance_from_exit_node": min(self.distance_to_exit_nodes()) / 5000.0,
-            "max_distance_from_exit_node": max(self.distance_to_exit_nodes()) / 5000.0,
+            "min_distance_from_exit_node": min(self.distance_to_exit_nodes()) / 3000.0,
+            "max_distance_from_exit_node": max(self.distance_to_exit_nodes()) / 3000.0,
             "average_arrivals": self.arrivals/self.step_counter,
             "average_departures": self.departures/self.step_counter,
             "average_waiting_time": self.avg_waiting_time,
             "average_stranding_counts": self.avg_stranding_counts,
             "time_elapsed_since_last_bus": (self.step_counter - self.time_of_last_bus) / 60.,
-            "number_of_waiting_passengers": len(self.passengers) / 100,
-            "number_of_stranding_passengers": len([passenger for passenger in self.passengers if passenger.stranding_counts>0]) / 100,
+            "number_of_waiting_passengers": len(self.passengers) / 10,
+            "number_of_stranding_passengers": len([passenger for passenger in self.passengers if passenger.stranding_counts>0]) / 10,
             "zone_type": self.zone_type_id
         }
     

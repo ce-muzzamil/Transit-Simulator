@@ -142,6 +142,7 @@ class TransitNetworkEnv(gym.Env):
         return obs, {}
 
     def reset(self, hard_reset=True, *args, **kwargs):
+        print(self.current_time/3600, self.current_day)
         done = False
         while not done:
             try:
@@ -159,10 +160,10 @@ class TransitNetworkEnv(gym.Env):
                 else:
                     done = True
             except:
-                # print("error:", self.seed)
+                print("error:", self.seed)
                 time.sleep(0.5)
                 np.random.seed(int(str(time.time()).split(".")[-1]))
-                
+            print(self.current_time/3600, self.current_day)
         return output
 
     def get_updated_node_data(self):

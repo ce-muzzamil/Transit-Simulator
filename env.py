@@ -465,7 +465,7 @@ class TransitNetworkEnv(gym.Env):
                             if node in bus.to_go:
                                 capacity += bus.capacity - len(bus.passengers)
 
-                    demand_capacity_ratio = demand / capacity
+                    demand_capacity_ratio = max(demand / capacity, 0)
                     node_counts += 1
 
                     if (demand_capacity_ratio < 1 and action == 1) or (
@@ -502,7 +502,7 @@ class TransitNetworkEnv(gym.Env):
             ]
 
             if len(avg_waiting_time) > 0:
-                avg_waiting_time = np.mean(avg_waiting_time)/60.  # minutes
+                avg_waiting_time = np.mean(avg_waiting_time)//15.  # minutes
             else:
                 avg_waiting_time = 0.0
 

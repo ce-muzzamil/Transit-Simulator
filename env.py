@@ -511,8 +511,10 @@ class TransitNetworkEnv(gym.Env):
             else:
                 avg_stranding_count = 0  # counts
 
-            if avg_waiting_time > 15:
+            if avg_waiting_time > 15 and action==0:
                 sum_reward_2 += -avg_waiting_time//15
+            elif avg_waiting_time > 15 and action==1:
+                sum_reward_2 += -avg_waiting_time//15 * 0.25
             
             if avg_stranding_count > 0 and action == 0:
                 sum_reward_2 += -2

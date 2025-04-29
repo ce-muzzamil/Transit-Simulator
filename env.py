@@ -465,7 +465,7 @@ class TransitNetworkEnv(gym.Env):
                             if node in bus.to_go:
                                 capacity += bus.capacity - len(bus.passengers)
 
-                    demand_capacity_ratio = max(demand / capacity, 0)
+                    demand_capacity_ratio = demand / max(capacity, 1e-5)
                     node_counts += 1
 
                     if (demand_capacity_ratio < 1 and action == 1) or (

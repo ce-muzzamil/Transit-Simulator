@@ -59,6 +59,7 @@ class TransitSystem:
         `seed`: is for generating a random scenerio
         """
         self.seed = seed
+        self.analysis_period_sec = analysis_period_sec
         np.random.seed(seed=seed)
         self.topology = Topology(
             analysis_period_sec=analysis_period_sec,
@@ -86,14 +87,18 @@ class TransitSystem:
         self.analysis_period_sec = analysis_period_sec
         self.buses: list[Bus] = []
 
+        self.log_passengers = log_passengers
+        self.passenger_logger = PassengerLogger("logs")
+
+        self.num_busses_added = 0
+        self.num_buses_done = 0
+        self.num_passengers_done = 0
+
         self.route_ids = self.topology.route_ids
         for route_id in self.route_ids:
             for _ in range(self.num_busses_per_route):
                 self.add_bus_on_route(route_id, reversed=False)
                 self.add_bus_on_route(route_id, reversed=True)
-
-        self.log_passengers = log_passengers
-        self.passenger_logger = PassengerLogger("logs")
 
     def add_bus_on_route(self, route_id: int, reversed: bool):
         """
@@ -112,8 +117,10 @@ class TransitSystem:
                 self.analysis_period_sec,
                 self.topology,
                 reversed=reversed,
+                analysis_period_sec=self.analysis_period_sec
             )
         )
+        self.num_busses_added += 1
 
     def claculate_passenger_parametres(self, time: int, passenger: Passenger):
         """
@@ -152,6 +159,7 @@ class TransitSystem:
         for i, bus in enumerate(self.buses):
             passengers = bus.step(time)
             for passenger in passengers:
+                self.num_passengers_done += 1
                 self.claculate_passenger_parametres(time, passenger)
                 
                 if self.log_passengers:
@@ -168,3 +176,5 @@ class TransitSystem:
         for bus in to_drop:
             if bus in self.buses:
                 self.buses.remove(bus)
+                self.num_buses_done += 1
+        

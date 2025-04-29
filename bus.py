@@ -20,6 +20,7 @@ class Bus:
         step_interval: int,
         topology: Topology,
         reversed: bool,
+        analysis_period_sec: int = 60,
     ):
         """
         Arguments:
@@ -29,6 +30,7 @@ class Bus:
         `service_route`: is the id of the predifined subsets of the `topology`
         `topology`: is the instance of `Topology` class that represents the transit system
         `reversed`: is the boolen defining the direction of bus. i.e., A->B or B->A
+        `analysis_period_sec`: is the time interval in seconds for which the bus is going to be analyzed
         """
         self.ID = np.random.randint(0, 1e9)
         self.capacity = capacity
@@ -40,6 +42,7 @@ class Bus:
         self.reversed = reversed
         self.total_distance_traversed = 0
         self.num_passengers_served = 0
+        self.analysis_period_sec = analysis_period_sec
 
         self.topology = topology
         nodes_ids = [
@@ -171,5 +174,8 @@ class Bus:
         self.distance_next_node -= self.speed * self.step_interval
         self.total_distance_traversed += self.speed * self.step_interval
         self.num_passengers_served += len(to_drop)
+
+        for passenger in self.passengers:
+            passenger.travel_time += self.analysis_period_sec
 
         return to_drop

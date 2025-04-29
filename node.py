@@ -33,6 +33,7 @@ class Node:
         min_catchment_radius: float = 0.5,
         min_transit_users_proportion: float = 0.05,
         max_transit_users_proportion: float = 0.3,
+        analysis_period_sec: int = 60,
     ) -> None:
         """
         Argument:
@@ -47,10 +48,12 @@ class Node:
         `min_catchment_radius` is the lowerbound to clip smaller values for the area of catchment area of each station
         `min_transit_users_proportion` is the minimum ratio of transit users given the population for a station
         `max_transit_users_proportion` is the maximum ration of transit users given the population for a station
+        `analysis_period_sec` is the time period in seconds for which the simulation is run
         """
         self.node_id = int(node_id)
         self.mean_population_density = mean_population_density
         self.mean_catchment_radius = mean_catchment_radius
+        self.analysis_period_sec = analysis_period_sec
 
         self.population_density_ppkm2 = max(
             np.random.normal(loc=mean_population_density, scale=std_population_density),
@@ -106,38 +109,14 @@ class Node:
 
         Return:
         ------
-        A List of `Nodes` that will work as trander nodes in this travel
+        A List of `Nodes` that will work as transfer nodes in this travel
         """
         path = self.od_route[destination.node_id]
 
-        # Extract affiliated route IDs or None if more than 2 routes exist
-        affliated_route_ids = [
-            list(routes)[0].route_id if len(routes) <= 2 else None
-            for routes in (node.affiliated_routes for node in path)
-        ]
-
-        # Forward fill `None` values
-        last_valid = None
-        for i in range(len(affliated_route_ids)):
-            if affliated_route_ids[i] is None:
-                affliated_route_ids[i] = last_valid
-            else:
-                last_valid = affliated_route_ids[i]
-
-        # Backward fill if the tail had `None`s
-        last_valid = None
-        for i in range(len(affliated_route_ids) - 1, -1, -1):
-            if affliated_route_ids[i] is None:
-                affliated_route_ids[i] = last_valid
-            else:
-                last_valid = affliated_route_ids[i]
-
-        # Detect transfers (change in route IDs)
-        transfers = [
-            path[i]
-            for i in range(1, len(affliated_route_ids))
-            if affliated_route_ids[i] != affliated_route_ids[i - 1]
-        ]
+        transfers = []
+        for node in path:
+            if node.is_transfer and node != self and node != destination:
+                transfers.append(node)
 
         return transfers
 
@@ -171,16 +150,19 @@ class Node:
                 self.temp_waiting_passengers[k] -= v
                 for _ in range(v):
                     path = self.od_route[all_nodes[k].node_id]
-                    self.passengers.append(
-                        Passenger(
-                            origin=self,
-                            destination=all_nodes[k],
-                            queued_since=time,
-                            transfers=self.check_transfers(all_nodes[k]),
-                            path=path,
+                    if self != all_nodes[k]:
+                        self.passengers.append(
+                            Passenger(
+                                origin=self,
+                                destination=all_nodes[k],
+                                queued_since=time,
+                                transfers=self.check_transfers(all_nodes[k]),
+                                path=path,
+                            )
                         )
-                    )
-
+        for passenger in self.passengers:
+            passenger.waiting_time += self.analysis_period_sec
+            
         self.step_counter += 1
         if len(self.passengers) > 0:
             self.avg_waiting_time = np.mean([passenger.waiting_time for passenger in self.passengers])
@@ -208,7 +190,6 @@ class Node:
 
         for passenger in bus.passengers:
             if passenger.destination == self:
-                passenger.travel_time += time - passenger.queued_since
                 passenger.queued_since = time
                 to_drop.append(passenger)
                 
@@ -216,14 +197,13 @@ class Node:
                 to_drop_first_transfer: list[Passenger] = []
                 for transfer in passenger.transfers:
                     if transfer == self:
-                        passenger.travel_time += time - passenger.queued_since
                         passenger.queued_since = time
                         self.passengers.append(passenger)
                         to_drop_from_bus.append(passenger)
                         to_drop_first_transfer.append(passenger)
 
                 for passenger in to_drop_first_transfer:
-                    passenger.transfers.pop(0)
+                    passenger.transfers.remove(self)
 
         for passenger in to_drop + to_drop_from_bus:
             if passenger in bus.passengers:
@@ -234,14 +214,12 @@ class Node:
         for passenger in self.passengers:
             if len(bus.passengers) < bus.capacity:
                 if passenger.destination in bus.to_go:
-                    passenger.waiting_time += time - passenger.queued_since
                     passenger.queued_since = time
                     bus.passengers.append(passenger)
                     aboard.append(passenger)
                 else:
                     for transfer in passenger.transfers:
                         if transfer in bus.to_go:
-                            passenger.waiting_time += time - passenger.queued_since
                             passenger.queued_since = time
                             bus.passengers.append(passenger)
                             aboard.append(passenger)

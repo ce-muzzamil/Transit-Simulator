@@ -10,7 +10,6 @@ from torch_geometric.utils import subgraph
 from torch_geometric.data import Data
 import time
 
-
 class TransitNetworkEnv(gym.Env):
     def __init__(self, is_training=True, seed=0):
         np.random.seed(seed)
@@ -115,7 +114,7 @@ class TransitNetworkEnv(gym.Env):
         self.num_nodes = len(self.transit_system.topology.nodes)
         self.num_edges = len(self.transit_system.topology.routes)
         self.num_routes = self.transit_system.topology.num_routes
-        self.max_num_buses = 15000
+        self.max_num_buses = 15000000
 
         if self.num_routes == 0:
             return
@@ -503,7 +502,7 @@ class TransitNetworkEnv(gym.Env):
             ]
 
             if len(avg_waiting_time) > 0:
-                avg_waiting_time = np.mean(avg_waiting_time)  # seconds
+                avg_waiting_time = np.mean(avg_waiting_time)/60.  # minutes
             else:
                 avg_waiting_time = 0.0
 
@@ -512,17 +511,14 @@ class TransitNetworkEnv(gym.Env):
             else:
                 avg_stranding_count = 0  # counts
 
-            if 0 < avg_waiting_time < 300:
-                sum_reward_2 += -1
-            elif 300 <= avg_waiting_time < 600:
-                sum_reward_2 += -2
-            elif 600 <= avg_waiting_time <= 900:
-                sum_reward_2 += -3
-            elif avg_waiting_time > 900:
-                sum_reward_2 += -4
+            if avg_waiting_time == 0:
+                pass
+            else:
+                sum_reward_2 += -avg_waiting_time/60
+            
 
             if avg_stranding_count > 0:
-                sum_reward_2 += -5
+                sum_reward_2 += -2
 
             if action == 1:
                 expence_of_bus_journey = 7  # 1.5 km/leter

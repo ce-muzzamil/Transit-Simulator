@@ -526,9 +526,9 @@ class TransitNetworkEnv(gym.Env):
 
             sum_reward_3 += -expence_of_bus_journey
 
-        sum_reward_1 = sum_reward_1 / len(actions)
-        sum_reward_2 = sum_reward_2 / len(actions)
-        sum_reward_3 = sum_reward_3 / len(actions)
+        sum_reward_1 = sum_reward_1 / len(actions) / 100.
+        sum_reward_2 = sum_reward_2 / len(actions) / 100.
+        sum_reward_3 = sum_reward_3 / len(actions) / 100.
 
         reward = sum_reward_1 + sum_reward_2 + sum_reward_3
 

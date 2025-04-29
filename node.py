@@ -280,7 +280,7 @@ class Node:
             "max_distance_from_exit_node": max(self.distance_to_exit_nodes()) / 3000.0,
             "average_arrivals": self.arrivals/self.step_counter,
             "average_departures": self.departures/self.step_counter,
-            "average_waiting_time": self.avg_waiting_time,
+            "average_waiting_time": self.avg_waiting_time/60,
             "average_stranding_counts": self.avg_stranding_counts,
             "time_elapsed_since_last_bus": (self.step_counter - self.time_of_last_bus) / 60.,
             "number_of_waiting_passengers": len(self.passengers) / 10,

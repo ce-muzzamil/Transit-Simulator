@@ -142,7 +142,6 @@ class TransitNetworkEnv(gym.Env):
         return obs, {}
 
     def reset(self, hard_reset=True, *args, **kwargs):
-        print(self.current_time/3600, self.current_day)
         done = False
         while not done:
             try:
@@ -163,7 +162,6 @@ class TransitNetworkEnv(gym.Env):
                 print("error:", self.seed)
                 time.sleep(0.5)
                 np.random.seed(int(str(time.time()).split(".")[-1]))
-            print(self.current_time/3600, self.current_day)
         return output
 
     def get_updated_node_data(self):
@@ -319,6 +317,7 @@ class TransitNetworkEnv(gym.Env):
         these binary variables corresponds to each exit node of the route and the binary variable is to indicate whether to add a bus for that exit node or not.
         Since, a single model is used for all routes, The len of action can be changed from toplogy to toplogy but the mechanism will not fail.
         """
+        print(self.current_time)
         action = action[: self.num_routes * 2]
 
         for i, decision in enumerate(action):

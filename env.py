@@ -207,10 +207,10 @@ class TransitNetworkEnv(gym.Env):
                     )
                     
                 x = node.get_array()
-                x = np.append(x, len(buses_data[node.associated_route][0])/10)
-                x = np.append(x, len(buses_data[node.associated_route][1])/10)
-                x = np.append(x, sum([0]+buses_data[node.associated_route][0])/10)
-                x = np.append(x, sum([0]+buses_data[node.associated_route][1])/10)
+                x = np.append(x, 0)
+                x = np.append(x, 0)
+                x = np.append(x, 0)
+                x = np.append(x, 0)
 
             x = np.append(x, np.sin(2*np.pi*self.current_time/(self.hours_of_opperation_per_day*3600)))
             data.append(x.astype(np.float32))

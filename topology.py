@@ -680,9 +680,6 @@ class Topology:
         """
         Generates nodes using uniform probability distribution given the min and max nodes per route and min and max routes per topology
         """
-        # self.num_stations = np.random.randint(self.min_num_stops_per_route*self.min_num_route_per_toplogy,
-        #                                  self.max_num_stops_per_route*self.max_num_route_per_toplogy)
-
         self.num_stations = np.random.randint(
             self.max_num_stops_per_route * self.min_num_route_per_toplogy,
             self.max_num_stops_per_route * self.max_num_route_per_toplogy,

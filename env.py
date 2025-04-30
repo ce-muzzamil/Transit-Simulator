@@ -37,7 +37,7 @@ class TransitNetworkEnv(gym.Env):
         self.max_nodes = self.max_routes * self.max_route_nodes
         self.max_route_edges = self.max_route_nodes * 4
         self.max_edges = self.max_nodes * 4
-        self.num_node_features = 18
+        self.num_node_features = 20
         
         self.max_exit_nodes_per_route = 2
 
@@ -160,40 +160,58 @@ class TransitNetworkEnv(gym.Env):
                     done = True
             except:
                 # print("error:", self.seed)
-                time.sleep(0.5)
+                # time.sleep(0.5)
                 np.random.seed(int(str(time.time()).split(".")[-1]))
         return output
 
     def get_updated_node_data(self):
         data = []
 
-        buses_data = {}
-        for route_id in self.nodes_in_routes.keys():
-            buses_data[route_id] = (
-                len(
-                    [
-                        bus
-                        for bus in self.transit_system.buses
-                        if bus.service_route == route_id and not bus.reversed
-                    ]
-                ),
-                len(
-                    [
-                        bus
-                        for bus in self.transit_system.buses
-                        if bus.service_route == route_id and bus.reversed
-                    ]
-                ),
-            )
-
         for node in self.transit_system.topology.nodes:
-            x = node.get_array()
             if node.associated_route != -1:
-                x = np.append(x, buses_data[node.associated_route][0])
-                x = np.append(x, buses_data[node.associated_route][1])
+                buses_data = {}
+                for route_id in self.nodes_in_routes.keys():
+                    buses_data[route_id] = (
+                        [
+                            max(0, bus.capacity - len(bus.passengers))
+                            for bus in self.transit_system.buses
+                            if bus.service_route == route_id and not bus.reversed and node in bus.to_go
+                        ],
+                        [
+                            max(0, bus.capacity - len(bus.passengers))
+                            for bus in self.transit_system.buses
+                            if bus.service_route == route_id and bus.reversed and node in bus.to_go
+                        ]
+                    )
+                    
+                x = node.get_array()
+            
+                x = np.append(x, len(buses_data[node.associated_route][0])/10)
+                x = np.append(x, len(buses_data[node.associated_route][1])/10)
+                x = np.append(x, sum([0]+buses_data[node.associated_route][0])/10)
+                x = np.append(x, sum([0]+buses_data[node.associated_route][1])/10)
             else:
-                x = np.append(x, -1)
-                x = np.append(x, -1)
+                buses_data = {}
+                for route_id in self.nodes_in_routes.keys():
+                    buses_data[route_id] = (
+                        [
+                            max(0, bus.capacity - len(bus.passengers))
+                            for bus in self.transit_system.buses
+                            if not bus.reversed and node in bus.to_go
+                        ],
+                        [
+                            max(0, bus.capacity - len(bus.passengers))
+                            for bus in self.transit_system.buses
+                            if bus.reversed and node in bus.to_go
+                        ]
+                    )
+                    
+                x = node.get_array()
+                x = np.append(x, len(buses_data[node.associated_route][0])/10)
+                x = np.append(x, len(buses_data[node.associated_route][1])/10)
+                x = np.append(x, sum([0]+buses_data[node.associated_route][0])/10)
+                x = np.append(x, sum([0]+buses_data[node.associated_route][1])/10)
+
             x = np.append(x, np.sin(2*np.pi*self.current_time/(self.hours_of_opperation_per_day*3600)))
             data.append(x.astype(np.float32))
 
@@ -471,7 +489,7 @@ class TransitNetworkEnv(gym.Env):
                     if (demand_capacity_ratio < 1 and action == 1) or (
                         demand_capacity_ratio > 1 and action == 0
                     ):
-                        reward_1 += -2
+                        reward_1 += -5
 
             sum_reward_1 += reward_1 / node_counts if node_counts > 0 else 0   
 
@@ -511,11 +529,11 @@ class TransitNetworkEnv(gym.Env):
             else:
                 avg_stranding_count = 0  # counts
 
-            if avg_waiting_time > 15 and action==0:
+            if avg_waiting_time > 15:
                 sum_reward_2 += -avg_waiting_time//15
-            elif avg_waiting_time > 15 and action==1:
-                sum_reward_2 += -avg_waiting_time//15 * 0.25
-            
+                if action == 0:
+                    sum_reward_2 += -7
+
             if avg_stranding_count > 0 and action == 0:
                 sum_reward_2 += -2
 
@@ -526,11 +544,11 @@ class TransitNetworkEnv(gym.Env):
 
             sum_reward_3 += -expence_of_bus_journey
 
-        sum_reward_1 = sum_reward_1 / len(actions) / 100.
-        sum_reward_2 = sum_reward_2 / len(actions) / 100.
-        sum_reward_3 = sum_reward_3 / len(actions) / 100.
+        sum_reward_1 = sum_reward_1 / len(actions)
+        sum_reward_2 = sum_reward_2 / len(actions)
+        sum_reward_3 = sum_reward_3 / len(actions)
 
-        reward = sum_reward_1 + sum_reward_2 + sum_reward_3
+        reward = (sum_reward_1 + sum_reward_2 + sum_reward_3)/100.
 
         reward_info = {
             "reward_type_1": sum_reward_1,

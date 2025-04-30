@@ -88,8 +88,10 @@ class Node:
 
         self.passengers: list[Passenger] = []
 
-        self.arrivals: int = 0
-        self.departures: int = 0
+        self.arrivals: list[int] = [0]
+        self.departures: list[int] = [0]
+        self.ins_arrivals: int = 0
+        self.ins_departures: int = 0
         self.avg_waiting_time: float = 0.0
         self.avg_stranding_counts: float = 0.0
         self.time_of_last_bus: int = 0
@@ -137,6 +139,9 @@ class Node:
         `all_nodes`: is a dict of all the `Node`s in the repo with `node_id` as key and `Node` itself as value
 
         """
+        self.ins_arrivals = 0
+        self.ins_departures = 0
+
         for i in range(len(to_depart)):
             if i not in self.temp_waiting_passengers:
                 self.temp_waiting_passengers[i] = 0
@@ -151,6 +156,7 @@ class Node:
                 for _ in range(v):
                     path = self.od_route[all_nodes[k].node_id]
                     if self != all_nodes[k]:
+                        self.ins_arrivals += 1
                         self.passengers.append(
                             Passenger(
                                 origin=self,
@@ -207,7 +213,7 @@ class Node:
         for passenger in to_drop + to_drop_from_bus:
             if passenger in bus.passengers:
                 bus.passengers.remove(passenger)
-                self.arrivals += 1
+                self.ins_arrivals += 1
 
         aboard: list[Passenger] = []
         for passenger in self.passengers:
@@ -233,7 +239,7 @@ class Node:
         for passenger in aboard:
             if passenger in self.passengers:
                 self.passengers.remove(passenger)
-                self.departures += 1
+                self.ins_departures += 1
         
         self.time_of_last_bus = time
         return to_drop
@@ -269,6 +275,8 @@ class Node:
         13- number of waiting passengers
         14- number of stranding passengers
         """
+        self.arrivals.append(self.ins_arrivals)
+        self.departures.append(self.ins_departures)
 
         return {
             "population_density": self.population_density_ppkm2 / 1000,
@@ -278,11 +286,11 @@ class Node:
             "is_transfer": float(self.is_transfer),
             "min_distance_from_exit_node": min(self.distance_to_exit_nodes()) / 3000.0,
             "max_distance_from_exit_node": max(self.distance_to_exit_nodes()) / 3000.0,
-            "average_arrivals": self.arrivals/self.step_counter,
-            "average_departures": self.departures/self.step_counter,
+            "average_arrivals": np.mean(self.arrivals[-10:])/100.,
+            "average_departures": np.mean(self.departures[-10:])/100.,
             "average_waiting_time": self.avg_waiting_time/60,
             "average_stranding_counts": self.avg_stranding_counts,
-            "time_elapsed_since_last_bus": (self.step_counter - self.time_of_last_bus) / 60.,
+            "time_elapsed_since_last_bus": (self.step_counter - self.time_of_last_bus) / 3600.,
             "number_of_waiting_passengers": len(self.passengers) / 10,
             "number_of_stranding_passengers": len([passenger for passenger in self.passengers if passenger.stranding_counts>0]) / 10,
             "zone_type": self.zone_type_id

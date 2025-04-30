@@ -382,7 +382,7 @@ class Topology:
                     distance = 0.0
                     for route in self.routes:
                         for u, v in zip(path[:-1], path[1:]):
-                            if u in route.node_pair_id and v in route.node_pair_id:
+                            if u in route.node_pair and v in route.node_pair:
                                 distance += route.distance
                     nodes[node_id].od_distance[node_id_2] = distance
 
@@ -548,19 +548,19 @@ class Topology:
 
             for node_id in self.schools:
                 if node.node_id == node_id:
-                    node.zone = "school"
+                    node.zone_type = "school"
 
             for node_id in self.offices:
                 if node.node_id == node_id:
-                    node.zone = "office"
+                    node.zone_type = "office"
 
             for node_id in self.shopping:
                 if node.node_id == node_id:
-                    node.zone = "shopping"
+                    node.zone_type = "shopping"
 
             for node_id in self.residentials:
                 if node.node_id == node_id:
-                    node.zone = "residentials"
+                    node.zone_type = "residentials"
 
         route_ids = list(set([route.route_id for route in self.routes]))
         for route in route_ids:
@@ -591,9 +591,8 @@ class Topology:
             exit_nodes = [node_id for node_id in nodes if len(neighbors[node_id]) == 1]
 
             for node in self.nodes:
-                for node_id in nodes:
-                    if node.node_id == node_id:
-                        node.exit_nodes.extend(exit_nodes)
+                if node.node_id in nodes:
+                    node.exit_nodes.extend(exit_nodes)
 
     def get_graph(self) -> None:
         """

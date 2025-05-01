@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from torch_geometric.nn import GATv2Conv, global_mean_pool
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.policies import ActorCriticPolicy
 
 class GATv2FeatureExtractor(nn.Module):

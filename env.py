@@ -341,7 +341,7 @@ class TransitNetworkEnv(gym.Env):
         for i, decision in enumerate(action):
             if decision == 1:
                 self.transit_system.add_bus_on_route(
-                    i // 2, reversed=False if i % 2 == 0 else True
+                    i // 2, reversed = False if i % 2 == 0 else True
                 )
 
         reward, reward_info = self.reward(action)

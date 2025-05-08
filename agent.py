@@ -3,12 +3,9 @@ import torch.nn as nn
 from torch_geometric.nn import GATv2Conv
 
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.core.rl_module.rl_module import RLModuleConfig
+from ray.rllib.core.rl_module.multi_rl_module import MultiAgentRLModule
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_torch
-torch, nn = try_import_torch()
-
-
 
 class GATv2FeatureExtractor(nn.Module):
     def __init__(
@@ -321,6 +318,7 @@ class Critic(nn.Module):
 
 class GNNPolicy(TorchRLModule):
     def setup(self):
+        super().setup()
         # Parse the observation and action spaces
         obs_space = self.config.observation_space
         act_space = self.config.action_space
@@ -370,3 +368,29 @@ class GNNPolicy(TorchRLModule):
             "logits": logits,
             "vf_preds": value,
         }
+
+class SharedGNNMultiAgentModule(MultiAgentRLModule):
+    @override(MultiAgentRLModule)
+    def setup(self):
+        policy_id = "shared_policy"
+        self.module_specs = self.config["modules"]
+
+        # Create a single shared module using the RLModuleSpec
+        shared_spec = self.module_specs[policy_id]
+        shared_module: RLModule = shared_spec.build()
+
+        # Store it under all agent IDs
+        self.modules = {policy_id: shared_module}
+        self.agent_to_module_mapping = {}  # Use this if needed to route
+
+    @override(MultiAgentRLModule)
+    def keys(self):
+        return self.modules.keys()
+
+    @override(MultiAgentRLModule)
+    def get_module(self, module_id):
+        return self.modules[module_id]
+
+    @override(MultiAgentRLModule)
+    def add_module(self, module_id, module):
+        self.modules[module_id] = module

@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch_geometric.nn import GATv2Conv
 
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.core.rl_module.multi_rl_module import MultiAgentRLModule
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 
@@ -369,8 +369,8 @@ class GNNPolicy(TorchRLModule):
             "vf_preds": value,
         }
 
-class SharedGNNMultiAgentModule(MultiAgentRLModule):
-    @override(MultiAgentRLModule)
+class SharedGNNMultiAgentModule(MultiRLModule):
+    @override(MultiRLModule)
     def setup(self):
         policy_id = "shared_policy"
         self.module_specs = self.config["modules"]
@@ -383,14 +383,14 @@ class SharedGNNMultiAgentModule(MultiAgentRLModule):
         self.modules = {policy_id: shared_module}
         self.agent_to_module_mapping = {}  # Use this if needed to route
 
-    @override(MultiAgentRLModule)
+    @override(MultiRLModule)
     def keys(self):
         return self.modules.keys()
 
-    @override(MultiAgentRLModule)
+    @override(MultiRLModule)
     def get_module(self, module_id):
         return self.modules[module_id]
 
-    @override(MultiAgentRLModule)
+    @override(MultiRLModule)
     def add_module(self, module_id, module):
         self.modules[module_id] = module

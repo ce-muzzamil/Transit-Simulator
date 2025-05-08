@@ -1,5 +1,6 @@
 import json
 import numpy as np
+import pandas as pd
 import gymnasium as gym
 from gymnasium import spaces
 from transit_system import TransitSystem
@@ -29,21 +30,32 @@ class TransitNetworkEnv(gym.Env):
         self.edge_data = {}
         self.nodes_in_routes = {}
 
-        self.alpha_1 = 1
-        self.alpha_2 = 1
-
-        self.max_routes = max(self.transit_system_config["max_num_route_per_toplogy"], 10)
-        self.max_route_nodes = max(self.transit_system_config["max_num_stops_per_route"], 10)
+        self.max_routes = max(
+            self.transit_system_config["max_num_route_per_toplogy"], 10
+        )
+        self.max_route_nodes = max(
+            self.transit_system_config["max_num_stops_per_route"], 10
+        )
         self.max_nodes = self.max_routes * self.max_route_nodes
-        self.max_route_edges = self.max_route_nodes * 4
+        self.max_route_edges = self.max_route_nodes * 2
         self.max_edges = self.max_nodes * 4
         self.num_node_features = 20
-        
         self.max_exit_nodes_per_route = 2
+
+        self.agent_ids = [f"agent_{i}" for i in range(self.max_routes * 2)]
+
+        self.rd_2_agent_id = [
+            (route_id, reversed)
+            for route_id in range(self.max_routes)
+            for reversed in [False, True]
+        ]
+
+        self.rd_2_agent_id = {k: v for k, v in zip(self.rd_2_agent_id, self.agent_ids)}
+
+        self.action_space = spaces.Discrete(2)
 
         self.observation_space = spaces.Dict(
             {
-                "num_routes": spaces.Discrete(self.max_routes),
                 "x": spaces.Box(
                     low=-np.inf,
                     high=np.inf,
@@ -56,41 +68,27 @@ class TransitNetworkEnv(gym.Env):
                 "edge_attr": spaces.Box(
                     low=0, high=np.inf, shape=(self.max_edges, 1), dtype=np.float32
                 ),
-                **{
-                    **{
-                        f"x_{i}": spaces.Box(
-                            low=-np.inf,
-                            high=np.inf,
-                            shape=(self.max_route_nodes, self.num_node_features),
-                            dtype=np.float32,
-                        )
-                        for i in range(self.max_routes)
-                    },
-                    **{
-                        f"edge_index_{i}": spaces.Box(
-                            low=0,
-                            high=np.inf,
-                            shape=(2, self.max_route_edges),
-                            dtype=np.int64,
-                        )
-                        for i in range(self.max_routes)
-                    },
-                    **{
-                        f"edge_attr_{i}": spaces.Box(
-                            low=0,
-                            high=np.inf,
-                            shape=(self.max_route_edges, 1),
-                            dtype=np.float32,
-                        )
-                        for i in range(self.max_routes)
-                    },
-                },
+                f"x_route": spaces.Box(
+                    low=-np.inf,
+                    high=np.inf,
+                    shape=(self.max_route_nodes, self.num_node_features),
+                    dtype=np.float32,
+                ),
+                f"edge_index_route": spaces.Box(
+                    low=0,
+                    high=np.inf,
+                    shape=(2, self.max_route_edges),
+                    dtype=np.int64,
+                ),
+                f"edge_attr_route": spaces.Box(
+                    low=0,
+                    high=np.inf,
+                    shape=(self.max_route_edges, 1),
+                    dtype=np.float32,
+                ),
             }
         )
 
-        self.action_space = spaces.MultiBinary(
-            self.max_routes * self.max_exit_nodes_per_route
-        )
         self.seed = seed
         self.seeds = [self.seed]
 
@@ -111,58 +109,63 @@ class TransitNetworkEnv(gym.Env):
         self.transit_system = TransitSystem(
             **self.transit_system_config, seed=self.seed
         )
+
         self.num_nodes = len(self.transit_system.topology.nodes)
         self.num_edges = len(self.transit_system.topology.routes)
         self.num_routes = self.transit_system.topology.num_routes
+
         self.max_num_buses = 15000000
 
         if self.num_routes == 0:
             return
 
-        obs = self.get_graph()
-        subgraphs = self.get_sub_graphs(obs)
-        for subgraph in subgraphs:
-            obs.update(subgraph)
-
-        if self.num_routes < self.max_routes:
-            for i in range(self.max_routes - self.num_routes):
-                sg = {
-                    f"x_{self.num_routes + i}": subgraph[f"x_{self.num_routes-1}"],
-                    f"edge_index_{self.num_routes + i}": subgraph[
-                        f"edge_index_{self.num_routes-1}"
-                    ],
-                    f"edge_attr_{self.num_routes + i}": subgraph[
-                        f"edge_attr_{self.num_routes-1}"
-                    ],
-                }
-                obs.update(sg)
-
-        obs["num_routes"] = self.num_routes
-
-        return obs, {}
-
     def reset(self, hard_reset=True, *args, **kwargs):
         done = False
         while not done:
             try:
-                output = self._reset(hard_reset=hard_reset)
+                self._reset(hard_reset=hard_reset)
                 if hard_reset:
-                    if (
-                        self.num_routes > 0
-                        and self.transit_system is not None
-                    ):
+                    if self.num_routes > 0 and self.transit_system is not None:
                         self.seeds.append(self.seed)
                         done = True
                     else:
-                        
                         np.random.seed(int(str(time.time()).split(".")[-1]))
                 else:
                     done = True
             except:
-                # print("error:", self.seed)
-                # time.sleep(0.5)
                 np.random.seed(int(str(time.time()).split(".")[-1]))
-        return output
+
+            self.directed_sub_routes = {}
+            for i in range(self.num_routes):
+                for reversed in [False, True]:
+                    self.transit_system.add_bus_on_route(i, reversed=reversed)
+                    bus = self.transit_system.buses[0]
+                    nodes = np.array([node.node_id for node in bus.to_go])
+                    indices = [j for j in range(len(nodes))]
+                    edge_index = np.array(list(zip(indices[:-1], indices[1:]))).T
+                    edge_attrs = np.array(bus.distances[1:])/1000.0
+                    nodes, edge_index, edge_attrs = (
+                        torch.from_numpy(nodes).to(torch.long),
+                        torch.from_numpy(edge_index).to(torch.long),
+                        torch.from_numpy(edge_attrs).to(torch.float32),
+                    )
+                    self.transit_system.buses.remove(bus)
+                    self.transit_system.num_busses_added = 0
+                    self.directed_sub_routes[(i, reversed)] = (nodes, edge_index, edge_attrs)
+
+            obs = self.get_graph()
+            subgraphs = self.get_sub_graphs(obs)
+            all_obs = {}
+
+            for key, subgraph in subgraphs.items():
+                sub_obs = {**obs, **{k + "_route": v for k, v in subgraph.items()}}
+                all_obs[self.rd_2_agent_id[key]] = sub_obs
+
+            for agent_id in self.agent_ids:
+                if agent_id not in all_obs:
+                    all_obs[self.rd_2_agent_id[key]] = sub_obs
+
+        return all_obs, {}
 
     def get_updated_node_data(self):
         data = []
@@ -175,44 +178,40 @@ class TransitNetworkEnv(gym.Env):
                         [
                             max(0, bus.capacity - len(bus.passengers))
                             for bus in self.transit_system.buses
-                            if bus.service_route == route_id and not bus.reversed and node in bus.to_go
+                            if bus.service_route == route_id
+                            and not bus.reversed
+                            and node in bus.to_go
                         ],
                         [
                             max(0, bus.capacity - len(bus.passengers))
                             for bus in self.transit_system.buses
-                            if bus.service_route == route_id and bus.reversed and node in bus.to_go
-                        ]
+                            if bus.service_route == route_id
+                            and bus.reversed
+                            and node in bus.to_go
+                        ],
                     )
-                    
+
                 x = node.get_array()
-            
-                x = np.append(x, len(buses_data[node.associated_route][0])/10)
-                x = np.append(x, len(buses_data[node.associated_route][1])/10)
-                x = np.append(x, sum([0]+buses_data[node.associated_route][0])/10)
-                x = np.append(x, sum([0]+buses_data[node.associated_route][1])/10)
+                x = np.append(x, len(buses_data[node.associated_route][0]) / 10)
+                x = np.append(x, len(buses_data[node.associated_route][1]) / 10)
+                x = np.append(x, sum([0] + buses_data[node.associated_route][0]) / 10)
+                x = np.append(x, sum([0] + buses_data[node.associated_route][1]) / 10)
             else:
-                buses_data = {}
-                for route_id in self.nodes_in_routes.keys():
-                    buses_data[route_id] = (
-                        [
-                            max(0, bus.capacity - len(bus.passengers))
-                            for bus in self.transit_system.buses
-                            if not bus.reversed and node in bus.to_go
-                        ],
-                        [
-                            max(0, bus.capacity - len(bus.passengers))
-                            for bus in self.transit_system.buses
-                            if bus.reversed and node in bus.to_go
-                        ]
-                    )
-                    
                 x = node.get_array()
                 x = np.append(x, 0)
                 x = np.append(x, 0)
                 x = np.append(x, 0)
                 x = np.append(x, 0)
 
-            x = np.append(x, np.sin(2*np.pi*self.current_time/(self.hours_of_opperation_per_day*3600)))
+            x = np.append(
+                x,
+                np.sin(
+                    2
+                    * np.pi
+                    * self.current_time
+                    / (self.hours_of_opperation_per_day * 3600)
+                ),
+            )
             data.append(x.astype(np.float32))
 
         return data
@@ -225,7 +224,7 @@ class TransitNetworkEnv(gym.Env):
             for edge in graph.edges():
                 for route in routes:
                     if route.node_pair_id == edge or route.node_pair_id[::-1] == edge:
-                        self.edge_data[edge] = {"edge_attr": route.distance/1000.0}
+                        self.edge_data[edge] = {"edge_attr": route.distance / 1000.0}
                         break
 
         nx.set_edge_attributes(graph, self.edge_data)
@@ -272,63 +271,30 @@ class TransitNetworkEnv(gym.Env):
         if obs.edge_attr.ndim == 1:
             obs.edge_attr = obs.edge_attr.unsqueeze(1)
 
-        if obs.x.ndim > 2:
-            N = obs.x.shape[0]
-            x = []
-            edge_attr = []
-            edge_index = []
-            for i in range(N):
-                x.append(
-                    torch.nn.functional.pad(
-                        obs.x[i],
-                        (0, 0, 0, max_nodes - obs.x[i].shape[0]),
-                        mode="constant",
-                        value=0,
-                    )
-                )
-                edge_index.append(
-                    torch.nn.functional.pad(
-                        obs.edge_index[i],
-                        (0, max_edges - obs.edge_index[i].shape[1], 0, 0),
-                        mode="constant",
-                        value=0,
-                    )
-                )
-                edge_attr.append(
-                    torch.nn.functional.pad(
-                        obs.edge_attr[i],
-                        (0, 0, 0, max_edges - obs.edge_attr[i].shape[0]),
-                        mode="constant",
-                        value=0,
-                    )
-                )
+        obs.x = torch.nn.functional.pad(
+            obs.x,
+            (0, 0, 0, max_nodes - obs.x.shape[0]),
+            mode="constant",
+            value=0,
+        )
 
-            obs.x = torch.stack(x, dim=0)
-            edge_index = torch.stack(edge_index, dim=0)
-            edge_attr = torch.stack(edge_attr, dim=0)
-        else:
-            obs.x = torch.nn.functional.pad(
-                obs.x,
-                (0, 0, 0, max_nodes - obs.x.shape[0]),
-                mode="constant",
-                value=0,
-            )
-            obs.edge_index = torch.nn.functional.pad(
-                obs.edge_index,
-                (0, max_edges - obs.edge_index.shape[1], 0, 0),
-                mode="constant",
-                value=0,
-            )
-            obs.edge_attr = torch.nn.functional.pad(
-                obs.edge_attr,
-                (0, 0, 0, max_edges - obs.edge_attr.shape[0]),
-                mode="constant",
-                value=0,
-            )
+        obs.edge_index = torch.nn.functional.pad(
+            obs.edge_index,
+            (0, max_edges - obs.edge_index.shape[1], 0, 0),
+            mode="constant",
+            value=0,
+        )
+
+        obs.edge_attr = torch.nn.functional.pad(
+            obs.edge_attr,
+            (0, 0, 0, max_edges - obs.edge_attr.shape[0]),
+            mode="constant",
+            value=0,
+        )
 
         return {"x": obs.x, "edge_index": obs.edge_index, "edge_attr": obs.edge_attr}
 
-    def step(self, action: np.ndarray):
+    def step(self, all_action: dict[str, int]):
         """
         Arguments:
         ---------
@@ -336,19 +302,20 @@ class TransitNetworkEnv(gym.Env):
         these binary variables corresponds to each exit node of the route and the binary variable is to indicate whether to add a bus for that exit node or not.
         Since, a single model is used for all routes, The len of action can be changed from toplogy to toplogy but the mechanism will not fail.
         """
+        action = [all_action[k] for k in sorted(all_action.keys())]
         action = action[: self.num_routes * 2]
 
         for i, decision in enumerate(action):
             if decision == 1:
                 self.transit_system.add_bus_on_route(
-                    i // 2, reversed = False if i % 2 == 0 else True
+                    i // 2, reversed=False if i % 2 == 0 else True
                 )
 
         reward, reward_info = self.reward(action)
         obs: dict = self.update_graph()
 
-        truncated = False
-        terminated = False
+        truncated = {k: False for k in self.agent_ids}
+        terminated = {k: False for k in self.agent_ids}
 
         self.transit_system.step(self.current_time)
 
@@ -362,108 +329,54 @@ class TransitNetworkEnv(gym.Env):
             self.current_time = self.current_time + self.analysis_period_sec
 
         if self.current_day >= self.analysis_period_days:
-            truncated = True
+            truncated["__all__"] = True
 
         info = {**reward_info}
 
         if len(self.transit_system.buses) > self.max_num_buses:
-            terminated = True
-            reward = -100
+            terminated["__all__"] = True
+            reward["__all__"] = -100
 
+        obs = self.get_graph()
         subgraphs = self.get_sub_graphs(obs)
-        for subgraph in subgraphs:
-            obs.update(subgraph)
+        all_obs = {}
 
-        if self.num_routes < self.max_routes:
-            for i in range(self.max_routes - self.num_routes):
-                sg = {
-                    f"x_{self.num_routes + i}": subgraph[f"x_{self.num_routes-1}"],
-                    f"edge_index_{self.num_routes + i}": subgraph[
-                        f"edge_index_{self.num_routes-1}"
-                    ],
-                    f"edge_attr_{self.num_routes + i}": subgraph[
-                        f"edge_attr_{self.num_routes-1}"
-                    ],
-                }
-                obs.update(sg)
+        for key, subgraph in subgraphs.items():
+            sub_obs = {**obs, **{k + "_route": v for k, v in subgraph.items()}}
+            all_obs[self.rd_2_agent_id[key]] = sub_obs
 
-        obs["num_routes"] = self.num_routes
-        return obs, reward, terminated, truncated, info
+        for agent_id in self.agent_ids:
+            if agent_id not in all_obs:
+                all_obs[self.rd_2_agent_id[key]] = sub_obs
+
+        return all_obs, reward, terminated, truncated, info
 
     def get_sub_graphs(self, obs: dict) -> list[Data]:
         if obs["edge_index"].ndim == 2:
-            subgraphs: list[dict] = []
-            for route_id in self.nodes_in_routes.keys():
-                indices = torch.tensor(
-                    [self.node_indices[i] for i in self.nodes_in_routes[route_id]]
-                ).long()
-                edge_index, edge_attr = subgraph(
-                    indices,
-                    obs["edge_index"].long(),
-                    obs["edge_attr"],
-                    relabel_nodes=True,
-                    num_nodes=self.num_nodes,
-                )
+            subgraphs: dict = {}
+            for (route_id, is_reversed), (
+                indices,
+                edge_index,
+                edge_attr,
+            ) in self.directed_sub_routes.items():
                 sub_data = Data(
                     x=obs["x"][indices],
                     edge_index=edge_index,
                     edge_attr=edge_attr,
                     y=None if "y" not in obs else obs["y"][indices],
                 )
-                subgraphs.append(self.fix_obs_shape(sub_data, is_subgraph=True))
-        else:
-            subgraphs: list[dict] = []
-            for route_id in self.nodes_in_routes.keys():
-                indices = torch.tensor(
-                    [self.node_indices[i] for i in self.nodes_in_routes[route_id]]
-                ).long()
-                batch_size = obs["edge_index"].shape[0]
-                sub_datas = []
-                for i in range(batch_size):
-                    edge_index, edge_attr = subgraph(
-                        indices,
-                        obs["edge_index"][i].long(),
-                        obs["edge_attr"][i],
-                        relabel_nodes=True,
-                        num_nodes=self.num_nodes,
-                    )
-                    sub_data = Data(
-                        x=obs["x"][i][indices],
-                        edge_index=edge_index,
-                        edge_attr=edge_attr,
-                        y=None if "y" not in obs else obs["y"][i][indices],
-                    )
-                    sub_datas.append(self.fix_obs_shape(sub_data, is_subgraph=True))
-
-                sub_data = Data(
-                    x=torch.stack([sub_data["x"] for sub_data in sub_datas], dim=0),
-                    edge_index=torch.stack(
-                        [sub_data["edge_index"] for sub_data in sub_datas], dim=0
-                    ),
-                    edge_attr=torch.stack(
-                        [sub_data["edge_attr"] for sub_data in sub_datas], dim=0
-                    ),
-                    y=(
-                        None
-                        if "y" not in obs
-                        else torch.stack(
-                            [sub_data["y"] for sub_data in sub_datas], dim=0
-                        )
-                    ),
+                subgraphs[(route_id, is_reversed)] = self.fix_obs_shape(
+                    sub_data, is_subgraph=True
                 )
+        else:
+            raise Exception("Higher batch is processed to create subgraphs")
 
-                subgraphs.append(sub_data.to_dict())
-
-        return [
-            {k + f"_{i}": v for k, v in subgraph.items()}
-            for i, subgraph in enumerate(subgraphs)
-        ]
+        return subgraphs
 
     def reward(self, actions) -> float:
 
-        sum_reward_1 = 0
-        sum_reward_2 = 0
-        sum_reward_3 = 0
+        rewards = {}
+        rewards_info = {}
 
         for i, action in enumerate(actions):
             route_id = int(i // 2)
@@ -476,10 +389,15 @@ class TransitNetworkEnv(gym.Env):
             for node in self.transit_system.topology.nodes:
                 if route_id in node.affliated_route_ids:
                     num_passengers.append(len(node.passengers))
-                    demand = len(node.passengers)/2 + 1 # devided by 2 to get approx only one side (reversed or not)
+                    demand = (
+                        len(node.passengers) / 2 + 1
+                    )  # devided by 2 to get approx only one side (reversed or not)
                     capacity = 1
                     for bus in self.transit_system.buses:
-                        if bus.service_route == route_id and bus.reversed == is_reversed:
+                        if (
+                            bus.service_route == route_id
+                            and bus.reversed == is_reversed
+                        ):
                             if node in bus.to_go:
                                 capacity += bus.capacity - len(bus.passengers)
 
@@ -490,8 +408,7 @@ class TransitNetworkEnv(gym.Env):
                         demand_capacity_ratio > 1 and action == 0
                     ):
                         reward_1 += -5
-
-            sum_reward_1 += reward_1 / node_counts if node_counts > 0 else 0   
+            reward_1 = reward_1 / node_counts if node_counts > 0 else 0
 
             avg_waiting_time = [
                 np.max([passenger.waiting_time for passenger in node.passengers])
@@ -520,7 +437,7 @@ class TransitNetworkEnv(gym.Env):
             ]
 
             if len(avg_waiting_time) > 0:
-                avg_waiting_time = np.mean(avg_waiting_time)/60.  # minutes
+                avg_waiting_time = np.mean(avg_waiting_time) / 60.0  # minutes
             else:
                 avg_waiting_time = 0.0
 
@@ -529,34 +446,36 @@ class TransitNetworkEnv(gym.Env):
             else:
                 avg_stranding_count = 0  # counts
 
+            reward_2 = 0
             if avg_waiting_time > 15:
-                sum_reward_2 += -avg_waiting_time//15
+                reward_2 += -avg_waiting_time // 15
                 if action == 0:
-                    sum_reward_2 += -7
+                    reward_2 += -7
 
             if avg_stranding_count > 0 and action == 0:
-                sum_reward_2 += -2
-
+                reward_2 += -2
+            
             if action == 1:
                 expence_of_bus_journey = 7  # 1.5 km/leter
             else:
                 expence_of_bus_journey = 0
+            reward_3 = -expence_of_bus_journey
 
-            sum_reward_3 += -expence_of_bus_journey
+            reward = reward_1 + reward_2 + reward_3
+            reward /= 10
 
-        sum_reward_1 = sum_reward_1 / len(actions)
-        sum_reward_2 = sum_reward_2 / len(actions)
-        sum_reward_3 = sum_reward_3 / len(actions)
+            reward_info = {
+                "reward_type_1": reward_1,
+                "reward_type_2": reward_2,
+                "reward_type_3": reward_3,
+                "reward": reward,
+            }
 
-        reward = (sum_reward_1 + sum_reward_2 + sum_reward_3)/100.
+            rewards[self.agent_ids[i]] = reward
+            rewards_info[self.agent_ids[i]] = reward_info
 
-        reward_info = {
-            "reward_type_1": sum_reward_1,
-            "reward_type_2": sum_reward_2,
-            "reward_type_3": sum_reward_3,
-            "reward": reward,
-        }
-        return reward, reward_info
+        pd.DataFrame(rewards_info.values()).mean().to_dict()
+        return rewards, rewards_info
 
     def render(self):
         pass

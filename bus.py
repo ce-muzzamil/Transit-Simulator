@@ -97,7 +97,6 @@ class Bus:
             else:
                 current_node_id = max(self.exit_nodes)
         except:
-            # self.topology.show(show_label=self.service_route)
             raise Exception("Error in Bus initiallization", 
                             f"{self.service_route=}, {self.topology.seed=}")
 

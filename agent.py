@@ -1,19 +1,26 @@
 import torch
 import torch.nn as nn
-from torch_geometric.nn import GATv2Conv, global_mean_pool
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
-from stable_baselines3.common.policies import ActorCriticPolicy
+from torch_geometric.nn import GATv2Conv
+
+from ray.rllib.core.rl_module.torch import TorchRLModule
+from ray.rllib.core.rl_module.rl_module import RLModuleConfig
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
+torch, nn = try_import_torch()
+
+
 
 class GATv2FeatureExtractor(nn.Module):
-    def __init__(self, 
-                 in_channels,
-                 edge_dim,
-                 hidden_dim=128, 
-                 num_heads=4, 
-                 out_dim=256,
-                 dropout_rate=0.0):
+    def __init__(
+        self,
+        in_channels,
+        edge_dim,
+        hidden_dim=128,
+        num_heads=4,
+        out_dim=256,
+        dropout_rate=0.0,
+    ):
         super().__init__()
-
 
         self.gat1 = GATv2Conv(
             in_channels=in_channels,
@@ -21,7 +28,7 @@ class GATv2FeatureExtractor(nn.Module):
             heads=num_heads,
             concat=True,
             edge_dim=edge_dim,
-            dropout=dropout_rate
+            dropout=dropout_rate,
         )
 
         self.gat2 = GATv2Conv(
@@ -30,12 +37,11 @@ class GATv2FeatureExtractor(nn.Module):
             heads=1,
             concat=True,
             edge_dim=edge_dim,
-            dropout=dropout_rate
+            dropout=dropout_rate,
         )
 
         self.dropout = nn.Dropout(0.1)
 
-    
     def process_for_gat(self, gat, x, edge_index, edge_attr):
         if x.ndim == 2:
             return gat(x, edge_index, edge_attr)
@@ -49,9 +55,18 @@ class GATv2FeatureExtractor(nn.Module):
     def forward(self, data):
         if "batch" not in data.keys():
             batch = None
-            x, edge_index, edge_attr = data["x"], data["edge_index"].long(), data["edge_attr"]
+            x, edge_index, edge_attr = (
+                data["x"],
+                data["edge_index"].long(),
+                data["edge_attr"],
+            )
         else:
-            x, edge_index, edge_attr, batch = data["x"], data["edge_index"].long(), data["edge_attr"], data["batch"]
+            x, edge_index, edge_attr, batch = (
+                data["x"],
+                data["edge_index"].long(),
+                data["edge_attr"],
+                data["batch"],
+            )
 
         if torch.isnan(x).any():
             print("Found NaNs in obs.x")
@@ -65,32 +80,34 @@ class GATv2FeatureExtractor(nn.Module):
         x = self.dropout(x)
 
         x = self.process_for_gat(self.gat2, x, edge_index, edge_attr)
-        x = torch.relu(x) # N,L,E
-        
+        x = torch.relu(x)  # N,L,E
+
         return x
-    
+
 
 class EncoderLayer(nn.Module):
     def __init__(self, embed_size, num_heads, dropout_rate=0.0):
         super().__init__()
-        
-        self.mha = nn.MultiheadAttention(embed_dim=embed_size, 
-                                         num_heads=num_heads,
-                                         dropout=dropout_rate,
-                                         batch_first=True)
-        
+
+        self.mha = nn.MultiheadAttention(
+            embed_dim=embed_size,
+            num_heads=num_heads,
+            dropout=dropout_rate,
+            batch_first=True,
+        )
+
         self.norm_1 = nn.LayerNorm(embed_size)
         self.dropout_1 = nn.Dropout(dropout_rate)
 
         self.ffn = nn.Sequential(
             nn.Linear(embed_size, embed_size),
             nn.ReLU(),
-            nn.Linear(embed_size, embed_size)
+            nn.Linear(embed_size, embed_size),
         )
 
         self.norm_2 = nn.LayerNorm(embed_size)
         self.dropout_2 = nn.Dropout(dropout_rate)
-    
+
     def forward(self, x):
         # Self-attention
         attn_output, _ = self.mha(x, x, x)
@@ -102,25 +119,30 @@ class EncoderLayer(nn.Module):
 
         return x
 
+
 class DecoderLayer(nn.Module):
     def __init__(self, embed_size, num_heads, dropout_rate=0.0):
         super().__init__()
 
         # Masked Self-attention
-        self.self_mha = nn.MultiheadAttention(embed_dim=embed_size,
-                                               num_heads=num_heads,
-                                               dropout=dropout_rate,
-                                               batch_first=True)
+        self.self_mha = nn.MultiheadAttention(
+            embed_dim=embed_size,
+            num_heads=num_heads,
+            dropout=dropout_rate,
+            batch_first=True,
+        )
 
         self.norm_1 = nn.LayerNorm(embed_size)
         self.dropout_1 = nn.Dropout(dropout_rate)
 
         # Cross-attention with encoder output
-        self.cross_mha = nn.MultiheadAttention(embed_dim=embed_size,
-                                                num_heads=num_heads,
-                                                dropout=dropout_rate,
-                                                batch_first=True)
-        
+        self.cross_mha = nn.MultiheadAttention(
+            embed_dim=embed_size,
+            num_heads=num_heads,
+            dropout=dropout_rate,
+            batch_first=True,
+        )
+
         self.norm_2 = nn.LayerNorm(embed_size)
         self.dropout_2 = nn.Dropout(dropout_rate)
 
@@ -128,7 +150,7 @@ class DecoderLayer(nn.Module):
         self.ffn = nn.Sequential(
             nn.Linear(embed_size, embed_size),
             nn.ReLU(),
-            nn.Linear(embed_size, embed_size)
+            nn.Linear(embed_size, embed_size),
         )
 
         self.norm_3 = nn.LayerNorm(embed_size)
@@ -149,25 +171,32 @@ class DecoderLayer(nn.Module):
 
         return x
 
+
 class Transformer(nn.Module):
-    def __init__(self, 
-                 embed_size, 
-                 num_heads, 
-                 num_encoder_layers, 
-                 num_decoder_layers, 
-                 dropout_rate=0.0):
-        
+    def __init__(
+        self,
+        embed_size,
+        num_heads,
+        num_encoder_layers,
+        num_decoder_layers,
+        dropout_rate=0.0,
+    ):
+
         super().__init__()
 
-        self.encoder_layers = nn.ModuleList([
-            EncoderLayer(embed_size, num_heads, dropout_rate)
-            for _ in range(num_encoder_layers)
-        ])
+        self.encoder_layers = nn.ModuleList(
+            [
+                EncoderLayer(embed_size, num_heads, dropout_rate)
+                for _ in range(num_encoder_layers)
+            ]
+        )
 
-        self.decoder_layers = nn.ModuleList([
-            DecoderLayer(embed_size, num_heads, dropout_rate)
-            for _ in range(num_decoder_layers)
-        ])
+        self.decoder_layers = nn.ModuleList(
+            [
+                DecoderLayer(embed_size, num_heads, dropout_rate)
+                for _ in range(num_decoder_layers)
+            ]
+        )
 
     def forward(self, src, tgt):
         # src: (N, L_src, E)
@@ -184,219 +213,160 @@ class Transformer(nn.Module):
         return dec_output
 
 
-class FeatureExtractor(BaseFeaturesExtractor):
-    def __init__(self, 
-                 observation_space, 
-                 gnn_hidden_dim=128, 
-                 gnn_num_heads=4, 
-                 embed_size=256, 
-                 transformer_num_heads=4, 
-                 num_encoder_layers=6, 
-                 num_decoder_layers=6, 
-                 dropout_rate=0.0
-                 ):
-        super().__init__(observation_space, embed_size)
+class FeatureExtractor(nn.Module):
+    def __init__(
+        self,
+        observation_space,
+        gnn_hidden_dim=128,
+        gnn_num_heads=4,
+        embed_size=256,
+        transformer_num_heads=4,
+        num_encoder_layers=6,
+        num_decoder_layers=6,
+        dropout_rate=0.0,
+    ):
+        super().__init__()
 
         self.feature_dim = embed_size
-        self.topology = GATv2FeatureExtractor(observation_space["x"].shape[-1],
-                                              observation_space["edge_attr"].shape[-1],
-                                              gnn_hidden_dim, 
-                                              gnn_num_heads, 
-                                              embed_size,
-                                              dropout_rate=dropout_rate)
-        
-        self.route = GATv2FeatureExtractor(observation_space["x_0"].shape[-1],
-                                           observation_space["edge_attr_0"].shape[-1],
-                                           gnn_hidden_dim,
-                                           gnn_num_heads, 
-                                           embed_size,
-                                           dropout_rate=dropout_rate)
-        
-        self.transformer = Transformer(embed_size=embed_size, 
-                                       num_heads=transformer_num_heads, 
-                                       num_encoder_layers=num_encoder_layers, 
-                                       num_decoder_layers=num_decoder_layers, 
-                                       dropout_rate=dropout_rate)
-        
+        self.topology = GATv2FeatureExtractor(
+            observation_space["x"].shape[-1],
+            observation_space["edge_attr"].shape[-1],
+            gnn_hidden_dim,
+            gnn_num_heads,
+            embed_size,
+            dropout_rate=dropout_rate,
+        )
+
+        self.route = GATv2FeatureExtractor(
+            observation_space["x_route"].shape[-1],
+            observation_space["edge_attr_route"].shape[-1],
+            gnn_hidden_dim,
+            gnn_num_heads,
+            embed_size,
+            dropout_rate=dropout_rate,
+        )
+
+        self.transformer = Transformer(
+            embed_size=embed_size,
+            num_heads=transformer_num_heads,
+            num_encoder_layers=num_encoder_layers,
+            num_decoder_layers=num_decoder_layers,
+            dropout_rate=dropout_rate,
+        )
+
         self.ffn = nn.Sequential(
             nn.Linear(embed_size, embed_size),
             nn.ReLU(),
             nn.Linear(embed_size, embed_size),
         )
-        
+
     def forward(self, observations):
-        num_routes = torch.argmax(observations["num_routes"])
+        route = {
+            f"x": observations[f"x_route"],
+            f"edge_index": observations[f"edge_index_route"],
+            f"edge_attr": observations[f"edge_attr_route"],
+        }
 
-        routes = []
-        for i in range(num_routes):
-            routes.append({
-                f"x": observations[f"x_{i}"],
-                f"edge_index": observations[f"edge_index_{i}"],
-                f"edge_attr": observations[f"edge_attr_{i}"]
-            })
+        observations = {
+            "x": observations["x"],
+            "edge_index": observations["edge_index"],
+            "edge_attr": observations["edge_attr"],
+        }
 
-        observations = {"x": observations["x"],
-                        "edge_index": observations["edge_index"],
-                        "edge_attr": observations["edge_attr"]}
-        
-        topology_vector = self.topology(observations) #N,L,E
-        routes_vectors = [self.route(route) for route in routes] # R x (N, L, E)
+        topology_vector = self.topology(observations)  # N,L,E
+        routes_vector = self.route(route)  # (N, L, E)
 
-        outs = []
-        for i in range(len(routes_vectors)):
-            if routes_vectors[i].ndim == 2:
-                routes_vectors[i] = routes_vectors[i].unsqueeze(0)
-            if topology_vector.ndim == 2:
-                topology_vector = topology_vector.unsqueeze(0)
-            out = self.transformer(topology_vector, routes_vectors[i]) # N,L,E
-            out = torch.mean(out, dim=1) # N,E
-            outs.append(out)
-        
-        out = torch.stack(outs, dim=1) # N,R,E
-        out = self.ffn(out) #N,R,E
+        if routes_vector.ndim == 2:
+            routes_vector = routes_vector.unsqueeze(0)
+        if topology_vector.ndim == 2:
+            topology_vector = topology_vector.unsqueeze(0)
+        out = self.transformer(topology_vector, routes_vector)  # N,L,E
+        out = torch.mean(out, dim=1)  # N,E
+        out = self.ffn(out)  # N,E
         return out
-    
+
+
 class Actor(nn.Module):
     def __init__(self, feature_dim: int, num_actions: int):
         super().__init__()
         self.feature_dim = feature_dim
         self.num_actions = num_actions
 
-        self.mlp_a = nn.Sequential(
+        self.mlp = nn.Sequential(
             nn.Linear(feature_dim, feature_dim),
             nn.ReLU(),
-            nn.Linear(feature_dim, 1),
+            nn.Linear(feature_dim, self.num_actions),
         )
-
-        self.mlp_b = nn.Sequential(
-            nn.Linear(feature_dim, feature_dim),
-            nn.ReLU(),
-            nn.Linear(feature_dim, 1),
-        )
-
 
     def forward(self, x):
-        _, R, _ = x.shape
-        actions = []
+        x = self.mlp(x)
+        return x
 
-        for i in range(R):
-            actions.append(self.mlp_a(x[:, i, :]))
-            actions.append(self.mlp_b(x[:, i, :]))
 
-        actions = torch.cat(actions, dim=1) #N,R*2
-        if actions.ndim == 2:
-            N, n = actions.shape
-            actions = torch.cat([actions, torch.zeros((N,self.num_actions-n), device=x.device)], dim=-1)
-        else:
-            n = actions.shape[0]
-            actions = torch.cat([actions, torch.zeros(self.num_actions-n, device=x.device)], dim=-1)
-        return actions
-    
 class Critic(nn.Module):
     def __init__(self, feature_dim: int):
         super().__init__()
         self.feature_dim = feature_dim
 
-        self.mlp_a = nn.Sequential(
-            nn.Linear(feature_dim, feature_dim*2),
-            nn.ReLU(),
-            nn.Linear(feature_dim*2, feature_dim*4),
-        )
-
-        self.mlp_b = nn.Sequential(
-            nn.Linear(feature_dim*4, feature_dim*2),
-            nn.ReLU(),
-            nn.Linear(feature_dim*2, feature_dim),
+        self.mlp = nn.Sequential(
+            nn.Linear(feature_dim, feature_dim),
             nn.ReLU(),
             nn.Linear(feature_dim, 1),
         )
 
     def forward(self, x):
+        x = self.mlp(x)
+        return x
 
-        a = self.mlp_a(x).mean(dim=1) #N,F
-        a = self.mlp_b(a) #N,1
 
-        return a
+class GNNPolicy(TorchRLModule):
+    def setup(self):
+        # Parse the observation and action spaces
+        obs_space = self.config.observation_space
+        act_space = self.config.action_space
+        self.action_dim = act_space.n
 
-class GNNPolicy(ActorCriticPolicy):
-    def __init__(
-        self,
-        observation_space,
-        action_space,
-        lr_schedule,
-        net_arch=None,
-        activation_fn=nn.ReLU,
-        features_extractor_class=None,
-        features_extractor_kwargs=None,
-        **kwargs,
-    ):
-        super().__init__(
-            observation_space,
-            action_space,
-            lr_schedule,
-            net_arch=[],
-            activation_fn=activation_fn,
-            features_extractor_class=features_extractor_class,
-            share_features_extractor=True,
-            features_extractor_kwargs=features_extractor_kwargs,
-            **kwargs,
+        model_cfg = self.config.model_config_dict or {}
+        custom_cfg = model_cfg.get("custom_model_config", {})
+
+        self.gnn_hidden_dim = custom_cfg.get("gnn_hidden_dim", 128)
+        self.gnn_num_heads = custom_cfg.get("gnn_num_heads", 4)
+        self.embed_size = custom_cfg.get("embed_size", 256)
+        self.transformer_num_heads = custom_cfg.get("transformer_num_heads", 4)
+        self.num_encoder_layers = custom_cfg.get("num_encoder_layers", 6)
+        self.num_decoder_layers = custom_cfg.get("num_decoder_layers", 6)
+        self.dropout_rate = custom_cfg.get("dropout_rate", 0.1)
+
+        self.feature_extractor = FeatureExtractor(
+            observation_space=obs_space,
+            gnn_hidden_dim=self.gnn_hidden_dim,
+            gnn_num_heads=self.gnn_num_heads,
+            embed_size=self.embed_size,
+            transformer_num_heads=self.transformer_num_heads,
+            num_encoder_layers=self.num_encoder_layers,
+            num_decoder_layers=self.num_decoder_layers,
+            dropout_rate=self.dropout_rate,
         )
 
-        feature_dim = self.features_extractor.features_dim
+        self.actor = Actor(self.embed_size, self.action_dim)
+        self.critic = Critic(self.embed_size)
 
-        self.mlp_extractor = nn.Identity()
-        self.actor = Actor(feature_dim, action_space.n)
-        self.critic = Critic(feature_dim)
-        self.value_net = self.critic
-        self.action_net = self.actor
+    @override(TorchRLModule)
+    def forward_inference(self, batch):
+        features = self.feature_extractor(batch["obs"])
+        logits = self.actor(features)
+        return {"logits": logits}
 
-        self._initialize_weights()
+    @override(TorchRLModule)
+    def forward_exploration(self, batch):
+        return self.forward_inference(batch)
 
-    def _initialize_weights(self):
-        for layer in sum([list(x.children()) for x in self.actor.children()], []) + sum([list(x.children()) for x in self.critic.children()], []):
-            if isinstance(layer, nn.Linear):
-                nn.init.kaiming_normal_(layer.weight)
-                nn.init.zeros_(layer.bias)
-
-    def forward(self, obs: torch.Tensor, deterministic: bool = False):
-        features = self.extract_features(obs)  # shared
-        latent_pi = self.actor(features)
-        latent_vf = self.critic(features)
-        
-        distribution = self._get_action_dist_from_latent(latent_pi)
-        actions = distribution.get_actions(deterministic=deterministic)
-        log_prob = distribution.log_prob(actions)
-        return actions, latent_vf, log_prob
-    
-    def predict(self, observation, state = None, episode_start = None, deterministic = False):
-        features = self.extract_features(observation)  # shared
-        latent_pi = self.actor(features)
-        distribution = self._get_action_dist_from_latent(latent_pi)
-        actions = distribution.get_actions(deterministic=deterministic)
-        return actions
-    
-    def evaluate_actions(self, obs, actions):
-        features = self.extract_features(obs)
-        latent_pi = self.actor(features)
-        latent_vf = self.value_net(features)
-
-        distribution = self._get_action_dist_from_latent(latent_pi)
-        log_prob = distribution.log_prob(actions)
-        entropy = distribution.entropy()
-        return latent_vf, log_prob, entropy
-
-    def _get_action_dist_from_latent(self, latent: torch.Tensor):
-        return self.action_dist.proba_distribution(latent)
-    
-    def predict_values(self, obs: torch.Tensor) -> torch.Tensor:
-        features = self.extract_features(obs)
-        return self.value_net(features)
-    
-    def set_training_mode(self, mode: bool) -> None:
-        super().set_training_mode(mode)
-        self.features_extractor.train(mode)
-        self.actor.train(mode)
-        self.critic.train(mode)
-        self.value_net.train(mode)
-    
-    
+    @override(TorchRLModule)
+    def forward_train(self, batch):
+        features = self.feature_extractor(batch["obs"])
+        logits = self.actor(features)
+        value = self.critic(features).squeeze(1)
+        return {
+            "logits": logits,
+            "vf_preds": value,
+        }

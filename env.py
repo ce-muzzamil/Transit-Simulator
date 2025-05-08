@@ -1,17 +1,17 @@
 import json
 import numpy as np
 import pandas as pd
-import gymnasium as gym
 from gymnasium import spaces
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from transit_system import TransitSystem
 import torch
 import networkx as nx
 from torch_geometric.utils.convert import from_networkx
-from torch_geometric.utils import subgraph
 from torch_geometric.data import Data
 import time
 
-class TransitNetworkEnv(gym.Env):
+
+class TransitNetworkEnv(MultiAgentEnv):
     def __init__(self, is_training=True, seed=0):
         np.random.seed(seed)
         self.is_training = is_training
@@ -42,7 +42,9 @@ class TransitNetworkEnv(gym.Env):
         self.num_node_features = 20
         self.max_exit_nodes_per_route = 2
 
-        self.agent_ids = [f"agent_{i}" for i in range(self.max_routes * 2)]
+        self.agents = [f"agent_{i}" for i in range(self.max_routes * 2)]
+
+        self.possible_agents = [f"agent_{i}" for i in range(self.max_routes * 2)]
 
         self.rd_2_agent_id = [
             (route_id, reversed)
@@ -50,11 +52,10 @@ class TransitNetworkEnv(gym.Env):
             for reversed in [False, True]
         ]
 
-        self.rd_2_agent_id = {k: v for k, v in zip(self.rd_2_agent_id, self.agent_ids)}
+        self.rd_2_agent_id = {k: v for k, v in zip(self.rd_2_agent_id, self.agents)}
 
-        self.action_space = spaces.Discrete(2)
-
-        self.observation_space = spaces.Dict(
+        get_action_space = lambda: spaces.Discrete(2)
+        get_obs_space = lambda: spaces.Dict(
             {
                 "x": spaces.Box(
                     low=-np.inf,
@@ -89,6 +90,8 @@ class TransitNetworkEnv(gym.Env):
             }
         )
 
+        self.observation_space = {key: get_obs_space() for key in self.agents}
+        self.action_space = {key: get_action_space() for key in self.agents}
         self.seed = seed
         self.seeds = [self.seed]
 
@@ -143,7 +146,7 @@ class TransitNetworkEnv(gym.Env):
                     nodes = np.array([node.node_id for node in bus.to_go])
                     indices = [j for j in range(len(nodes))]
                     edge_index = np.array(list(zip(indices[:-1], indices[1:]))).T
-                    edge_attrs = np.array(bus.distances[1:])/1000.0
+                    edge_attrs = np.array(bus.distances[1:]) / 1000.0
                     nodes, edge_index, edge_attrs = (
                         torch.from_numpy(nodes).to(torch.long),
                         torch.from_numpy(edge_index).to(torch.long),
@@ -151,7 +154,11 @@ class TransitNetworkEnv(gym.Env):
                     )
                     self.transit_system.buses.remove(bus)
                     self.transit_system.num_busses_added = 0
-                    self.directed_sub_routes[(i, reversed)] = (nodes, edge_index, edge_attrs)
+                    self.directed_sub_routes[(i, reversed)] = (
+                        nodes,
+                        edge_index,
+                        edge_attrs,
+                    )
 
             obs = self.get_graph()
             subgraphs = self.get_sub_graphs(obs)
@@ -161,10 +168,11 @@ class TransitNetworkEnv(gym.Env):
                 sub_obs = {**obs, **{k + "_route": v for k, v in subgraph.items()}}
                 all_obs[self.rd_2_agent_id[key]] = sub_obs
 
-            for agent_id in self.agent_ids:
+            for agent_id in self.possible_agents:
                 if agent_id not in all_obs:
                     all_obs[self.rd_2_agent_id[key]] = sub_obs
 
+            self.possible_agents = [f"agent_{i}" for i in range(self.num_routes * 2)]
         return all_obs, {}
 
     def get_updated_node_data(self):
@@ -314,9 +322,6 @@ class TransitNetworkEnv(gym.Env):
         reward, reward_info = self.reward(action)
         obs: dict = self.update_graph()
 
-        truncated = {k: False for k in self.agent_ids}
-        terminated = {k: False for k in self.agent_ids}
-
         self.transit_system.step(self.current_time)
 
         if (
@@ -328,6 +333,8 @@ class TransitNetworkEnv(gym.Env):
         else:
             self.current_time = self.current_time + self.analysis_period_sec
 
+        truncated = {"__all__": False}
+        terminated = {"__all__": False}
         if self.current_day >= self.analysis_period_days:
             truncated["__all__"] = True
 
@@ -335,7 +342,6 @@ class TransitNetworkEnv(gym.Env):
 
         if len(self.transit_system.buses) > self.max_num_buses:
             terminated["__all__"] = True
-            reward["__all__"] = -100
 
         obs = self.get_graph()
         subgraphs = self.get_sub_graphs(obs)
@@ -345,7 +351,7 @@ class TransitNetworkEnv(gym.Env):
             sub_obs = {**obs, **{k + "_route": v for k, v in subgraph.items()}}
             all_obs[self.rd_2_agent_id[key]] = sub_obs
 
-        for agent_id in self.agent_ids:
+        for agent_id in self.possible_agents:
             if agent_id not in all_obs:
                 all_obs[self.rd_2_agent_id[key]] = sub_obs
 
@@ -454,7 +460,7 @@ class TransitNetworkEnv(gym.Env):
 
             if avg_stranding_count > 0 and action == 0:
                 reward_2 += -2
-            
+
             if action == 1:
                 expence_of_bus_journey = 7  # 1.5 km/leter
             else:
@@ -471,8 +477,8 @@ class TransitNetworkEnv(gym.Env):
                 "reward": reward,
             }
 
-            rewards[self.agent_ids[i]] = reward
-            rewards_info[self.agent_ids[i]] = reward_info
+            rewards[self.possible_agents[i]] = reward
+            rewards_info[self.possible_agents[i]] = reward_info
 
         pd.DataFrame(rewards_info.values()).mean().to_dict()
         return rewards, rewards_info

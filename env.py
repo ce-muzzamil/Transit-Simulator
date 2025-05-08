@@ -91,8 +91,8 @@ class TransitNetworkEnv(MultiAgentEnv):
             }
         )
 
-        self.observation_space = {key: get_obs_space() for key in self.agents}
-        self.action_space = {key: get_action_space() for key in self.agents}
+        self.observation_spaces = {key: get_obs_space() for key in self.agents}
+        self.action_spaces = {key: get_action_space() for key in self.agents}
         self.seed = seed
         self.seeds = [self.seed]
 

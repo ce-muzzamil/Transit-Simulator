@@ -1,11 +1,12 @@
 import torch
 import torch.nn as nn
 from torch_geometric.nn import GATv2Conv
-
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import NestedDict
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.utils.annotations import override
+
 
 class GATv2FeatureExtractor(nn.Module):
     def __init__(
@@ -317,8 +318,10 @@ class Critic(nn.Module):
 
 
 class GNNPolicy(TorchRLModule):
+    """Shared GNN-based policy for all agents (PyTorch version)."""
+
+    @override(TorchRLModule)
     def setup(self):
-        super().setup()
         # Parse the observation and action spaces
         obs_space = self.config.observation_space
         act_space = self.config.action_space
@@ -327,6 +330,7 @@ class GNNPolicy(TorchRLModule):
         model_cfg = self.config.model_config_dict or {}
         custom_cfg = model_cfg.get("custom_model_config", {})
 
+        # Network hyperparameters
         self.gnn_hidden_dim = custom_cfg.get("gnn_hidden_dim", 128)
         self.gnn_num_heads = custom_cfg.get("gnn_num_heads", 4)
         self.embed_size = custom_cfg.get("embed_size", 256)
@@ -335,6 +339,7 @@ class GNNPolicy(TorchRLModule):
         self.num_decoder_layers = custom_cfg.get("num_decoder_layers", 6)
         self.dropout_rate = custom_cfg.get("dropout_rate", 0.1)
 
+        # Build networks
         self.feature_extractor = FeatureExtractor(
             observation_space=obs_space,
             gnn_hidden_dim=self.gnn_hidden_dim,
@@ -346,51 +351,141 @@ class GNNPolicy(TorchRLModule):
             dropout_rate=self.dropout_rate,
         )
 
-        self.actor = Actor(self.embed_size, self.action_dim)
-        self.critic = Critic(self.embed_size)
+        self.actor = nn.Linear(self.embed_size, self.action_dim)
+        self.critic = nn.Linear(self.embed_size, 1)
 
     @override(TorchRLModule)
-    def forward_inference(self, batch):
+    def forward_inference(self, batch: NestedDict) -> dict:
         features = self.feature_extractor(batch["obs"])
         logits = self.actor(features)
         return {"logits": logits}
 
     @override(TorchRLModule)
-    def forward_exploration(self, batch):
+    def forward_exploration(self, batch: NestedDict) -> dict:
         return self.forward_inference(batch)
 
     @override(TorchRLModule)
-    def forward_train(self, batch):
+    def forward_train(self, batch: NestedDict) -> dict:
         features = self.feature_extractor(batch["obs"])
         logits = self.actor(features)
-        value = self.critic(features).squeeze(1)
+        values = self.critic(features).squeeze(-1)
         return {
             "logits": logits,
-            "vf_preds": value,
+            "vf_preds": values,
         }
 
+
 class SharedGNNMultiAgentModule(MultiRLModule):
+    """Multi-agent module with shared GNN policy."""
+    
     @override(MultiRLModule)
     def setup(self):
-        policy_id = "shared_policy"
-        self.module_specs = self.config["modules"]
+        # Get module specs from config
+        module_specs = self.config.get("modules", {})
+        
+        if not module_specs:
+            raise ValueError("No module specs found in config!")
+        
+        # Use the first module spec as our shared module
+        first_module_id = next(iter(module_specs.keys()))
+        shared_spec = module_specs[first_module_id]
+        shared_module = shared_spec.build()
+        
+        # Store under all module IDs (shared policy)
+        self._rl_modules = {  # Note the underscore prefix
+            module_id: shared_module
+            for module_id in module_specs.keys()
+        }
+        
+        # Set up agent-to-module mapping
+        self._mapping = {  # Note the underscore prefix
+            module_id: first_module_id
+            for module_id in module_specs.keys()
+        }
 
-        # Create a single shared module using the RLModuleSpec
-        shared_spec = self.module_specs[policy_id]
-        shared_module: RLModule = shared_spec.build()
-
-        # Store it under all agent IDs
-        self.modules = {policy_id: shared_module}
-        self.agent_to_module_mapping = {}  # Use this if needed to route
-
-    @override(MultiRLModule)
-    def keys(self):
-        return self.modules.keys()
-
-    @override(MultiRLModule)
+    # Remove the @override decorator for these methods
     def get_module(self, module_id):
-        return self.modules[module_id]
+        return self._rl_modules.get(module_id)
 
-    @override(MultiRLModule)
     def add_module(self, module_id, module):
-        self.modules[module_id] = module
+        self._rl_modules[module_id] = module
+
+
+# class GNNPolicy(TorchRLModule):
+#     def setup(self):
+#         super().setup()
+#         # Parse the observation and action spaces
+#         obs_space = self.config.observation_space
+#         act_space = self.config.action_space
+#         self.action_dim = act_space.n
+
+#         model_cfg = self.config.model_config_dict or {}
+#         custom_cfg = model_cfg.get("custom_model_config", {})
+
+#         self.gnn_hidden_dim = custom_cfg.get("gnn_hidden_dim", 128)
+#         self.gnn_num_heads = custom_cfg.get("gnn_num_heads", 4)
+#         self.embed_size = custom_cfg.get("embed_size", 256)
+#         self.transformer_num_heads = custom_cfg.get("transformer_num_heads", 4)
+#         self.num_encoder_layers = custom_cfg.get("num_encoder_layers", 6)
+#         self.num_decoder_layers = custom_cfg.get("num_decoder_layers", 6)
+#         self.dropout_rate = custom_cfg.get("dropout_rate", 0.1)
+
+#         self.feature_extractor = FeatureExtractor(
+#             observation_space=obs_space,
+#             gnn_hidden_dim=self.gnn_hidden_dim,
+#             gnn_num_heads=self.gnn_num_heads,
+#             embed_size=self.embed_size,
+#             transformer_num_heads=self.transformer_num_heads,
+#             num_encoder_layers=self.num_encoder_layers,
+#             num_decoder_layers=self.num_decoder_layers,
+#             dropout_rate=self.dropout_rate,
+#         )
+
+#         self.actor = Actor(self.embed_size, self.action_dim)
+#         self.critic = Critic(self.embed_size)
+
+#     @override(TorchRLModule)
+#     def forward_inference(self, batch):
+#         features = self.feature_extractor(batch["obs"])
+#         logits = self.actor(features)
+#         return {"logits": logits}
+
+#     @override(TorchRLModule)
+#     def forward_exploration(self, batch):
+#         return self.forward_inference(batch)
+
+#     @override(TorchRLModule)
+#     def forward_train(self, batch):
+#         features = self.feature_extractor(batch["obs"])
+#         logits = self.actor(features)
+#         value = self.critic(features).squeeze(1)
+#         return {
+#             "logits": logits,
+#             "vf_preds": value,
+#         }
+
+# class SharedGNNMultiAgentModule(MultiRLModule):
+#     @override(MultiRLModule)
+#     def setup(self):
+#         policy_id = "shared_policy"
+#         self.module_specs = self.config["modules"]
+
+#         # Create a single shared module using the RLModuleSpec
+#         shared_spec = self.module_specs[policy_id]
+#         shared_module: RLModule = shared_spec.build()
+
+#         # Store it under all agent IDs
+#         self.modules = {policy_id: shared_module}
+#         self.agent_to_module_mapping = {}  # Use this if needed to route
+
+#     @override(MultiRLModule)
+#     def keys(self):
+#         return self.modules.keys()
+
+#     @override(MultiRLModule)
+#     def get_module(self, module_id):
+#         return self.modules[module_id]
+
+#     @override(MultiRLModule)
+#     def add_module(self, module_id, module):
+#         self.modules[module_id] = module

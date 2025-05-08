@@ -315,29 +315,32 @@ class Critic(nn.Module):
         return x
 
 
+# 1. Define your Feature Extractor
+class FeatureExtractor(nn.Module):
+    def __init__(self, input_dim, gnn_hidden_dim, embed_size):
+        super().__init__()
+        self.fc = nn.Linear(input_dim, embed_size)
+        
+    def forward(self, obs):
+        return torch.relu(self.fc(obs))
+
+# 2. Define GNNPolicy without space arguments in __init__
 class GNNPolicy(TorchRLModule):
-    """Shared GNN policy properly integrated with new API stack."""
-    
     def __init__(self, config):
         super().__init__(config)
-        self.config = config
+        self.config = config  # Stores all config including spaces
         
     def setup(self):
-        # Access config directly from self.config
         model_config = self.config.get("model_config", {})
+        input_dim = self.config.observation_space.shape[0]
         
-        self.gnn_hidden_dim = model_config.get("gnn_hidden_dim", 128)
-        self.embed_size = model_config.get("embed_size", 256)
-        
-        # Build your networks
         self.feature_extractor = FeatureExtractor(
-            self.config.observation_space,
-            gnn_hidden_dim=self.gnn_hidden_dim,
-            embed_size=self.embed_size
+            input_dim=input_dim,
+            gnn_hidden_dim=model_config.get("gnn_hidden_dim", 128),
+            embed_size=model_config.get("embed_size", 256)
         )
-        
-        self.actor = nn.Linear(self.embed_size, self.config.action_space.n)
-        self.critic = nn.Linear(self.embed_size, 1)
+        self.actor = nn.Linear(model_config["embed_size"], self.config.action_space.n)
+        self.critic = nn.Linear(model_config["embed_size"], 1)
 
     def forward_train(self, batch):
         features = self.feature_extractor(batch["obs"])
@@ -348,9 +351,6 @@ class GNNPolicy(TorchRLModule):
 
     def forward_inference(self, batch):
         return self.forward_train(batch)
-
-    def forward_exploration(self, batch):
-        return self.forward_inference(batch)
 
 class SharedGNNMultiAgentModule(MultiRLModule):
     def setup(self):

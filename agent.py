@@ -316,42 +316,41 @@ class Critic(nn.Module):
 
 
 class GNNPolicy(TorchRLModule):
+    """Shared GNN policy properly integrated with new API stack."""
+    
+    def __init__(self, config):
+        super().__init__(config)
+        self.config = config
+        
     def setup(self):
-        obs_space = self.config.observation_space
-        act_space = self.config.action_space
-        self.action_dim = act_space.n
-
-        model_cfg = self.config.model_config_dict or {}
-        custom_cfg = model_cfg.get("custom_model_config", {})
-
-        self.gnn_hidden_dim = custom_cfg.get("gnn_hidden_dim", 128)
-        self.embed_size = custom_cfg.get("embed_size", 256)
-
+        # Access config directly from self.config
+        model_config = self.config.get("model_config", {})
+        
+        self.gnn_hidden_dim = model_config.get("gnn_hidden_dim", 128)
+        self.embed_size = model_config.get("embed_size", 256)
+        
+        # Build your networks
         self.feature_extractor = FeatureExtractor(
-            observation_space=obs_space,
+            self.config.observation_space,
             gnn_hidden_dim=self.gnn_hidden_dim,
             embed_size=self.embed_size
         )
-
-        self.actor = nn.Linear(self.embed_size, self.action_dim)
+        
+        self.actor = nn.Linear(self.embed_size, self.config.action_space.n)
         self.critic = nn.Linear(self.embed_size, 1)
-
-    def forward_inference(self, batch):
-        features = self.feature_extractor(batch["obs"])
-        logits = self.actor(features)
-        return {"logits": logits}
-
-    def forward_exploration(self, batch):
-        return self.forward_inference(batch)
 
     def forward_train(self, batch):
         features = self.feature_extractor(batch["obs"])
-        logits = self.actor(features)
-        values = self.critic(features).squeeze(-1)
         return {
-            "logits": logits,
-            "vf_preds": values,
+            "logits": self.actor(features),
+            "vf_preds": self.critic(features).squeeze(-1)
         }
+
+    def forward_inference(self, batch):
+        return self.forward_train(batch)
+
+    def forward_exploration(self, batch):
+        return self.forward_inference(batch)
 
 class SharedGNNMultiAgentModule(MultiRLModule):
     def setup(self):

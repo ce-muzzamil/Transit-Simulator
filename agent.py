@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 from torch_geometric.nn import GATv2Conv
-from ray.rllib.core.rl_module.torch import TorchRLModule
+from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
+from ray.rllib.core import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
-from ray.rllib.utils.annotations import override
 
 
 class GATv2FeatureExtractor(nn.Module):
@@ -282,99 +282,107 @@ class FeatureExtractor(nn.Module):
         return out
 
 
-class Actor(nn.Module):
-    def __init__(self, feature_dim: int, num_actions: int):
-        super().__init__()
-        self.feature_dim = feature_dim
-        self.num_actions = num_actions
+# class Actor(nn.Module):
+#     def __init__(self, feature_dim: int, num_actions: int):
+#         super().__init__()
+#         self.feature_dim = feature_dim
+#         self.num_actions = num_actions
 
-        self.mlp = nn.Sequential(
-            nn.Linear(feature_dim, feature_dim),
-            nn.ReLU(),
-            nn.Linear(feature_dim, self.num_actions),
-        )
+#         self.mlp = nn.Sequential(
+#             nn.Linear(feature_dim, feature_dim),
+#             nn.ReLU(),
+#             nn.Linear(feature_dim, self.num_actions),
+#         )
 
-    def forward(self, x):
-        x = self.mlp(x)
-        return x
-
-
-class Critic(nn.Module):
-    def __init__(self, feature_dim: int):
-        super().__init__()
-        self.feature_dim = feature_dim
-
-        self.mlp = nn.Sequential(
-            nn.Linear(feature_dim, feature_dim),
-            nn.ReLU(),
-            nn.Linear(feature_dim, 1),
-        )
-
-    def forward(self, x):
-        x = self.mlp(x)
-        return x
+#     def forward(self, x):
+#         x = self.mlp(x)
+#         return x
 
 
-# 1. Define your Feature Extractor
-class FeatureExtractor(nn.Module):
-    def __init__(self, input_dim, gnn_hidden_dim, embed_size):
-        super().__init__()
-        self.fc = nn.Linear(input_dim, embed_size)
-        
-    def forward(self, obs):
-        return torch.relu(self.fc(obs))
+# class Critic(nn.Module):
+#     def __init__(self, feature_dim: int):
+#         super().__init__()
+#         self.feature_dim = feature_dim
 
-# 2. Define GNNPolicy without space arguments in __init__
+#         self.mlp = nn.Sequential(
+#             nn.Linear(feature_dim, feature_dim),
+#             nn.ReLU(),
+#             nn.Linear(feature_dim, 1),
+#         )
+
+#     def forward(self, x):
+#         x = self.mlp(x)
+#         return x
+
+
 class GNNPolicy(TorchRLModule):
-    def __init__(self, config):
-        super().__init__(config)
-        self.config = config  # Stores all config including spaces
-        
     def setup(self):
-        model_config = self.config.get("model_config", {})
-        input_dim = self.config.observation_space.shape[0]
-        
+        super().setup()
+
         self.feature_extractor = FeatureExtractor(
-            input_dim=input_dim,
-            gnn_hidden_dim=model_config.get("gnn_hidden_dim", 128),
-            embed_size=model_config.get("embed_size", 256)
+            input_dim=self.config.observation_space,
+            gnn_hidden_dim=self.model_config.get("gnn_hidden_dim", 128),
+            gnn_num_heads=self.model_config.get("gnn_num_heads", 4),
+            embed_size=self.model_config.get("embed_size", 256),
+            transformer_num_heads=self.model_config.get("transformer_num_heads", 4),
+            num_encoder_layers=self.model_config.get("num_encoder_layers", 6),
+            num_decoder_layers=self.model_config.get("num_decoder_layers", 6),
+            dropout_rate=self.model_config.get("dropout_rate", 0.0),
         )
-        self.actor = nn.Linear(model_config["embed_size"], self.config.action_space.n)
-        self.critic = nn.Linear(model_config["embed_size"], 1)
 
-    def forward_train(self, batch):
-        features = self.feature_extractor(batch["obs"])
-        return {
-            "logits": self.actor(features),
-            "vf_preds": self.critic(features).squeeze(-1)
-        }
+        self._net = (
+            nn.Linear(
+                self.model_config.get("embed_size", 256),
+                self.model_config.get("embed_size", 256),
+            ),
+        )
 
-    def forward_inference(self, batch):
-        return self.forward_train(batch)
+    def _forward(self, batch, **kwargs):
+        embeddings = self._net(self.feature_extractor(batch[Columns.OBS]))
+        return {"encoder_embeddings": embeddings}
+
+
+class Policy(TorchRLModule):
+    def setup(self):
+        super().setup()
+
+        embedding_dim = self.model_config["embedding_dim"]
+        hidden_dim = self.model_config["hidden_dim"]
+
+        self._pi_head = torch.nn.Sequential(
+            torch.nn.Linear(embedding_dim, hidden_dim),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_dim, self.action_space.n),
+        )
+
+    def _forward(self, batch, **kwargs):
+        embeddings = batch["encoder_embeddings"]
+        logits = self._pi_head(embeddings)
+        return {Columns.ACTION_DIST_INPUTS: logits}
+
 
 class SharedGNNMultiAgentModule(MultiRLModule):
     def setup(self):
-        module_specs = self.config.get("modules", {})
-        
-        if not module_specs:
-            raise ValueError("No module specs found in config!")
-        
-        first_module_id = next(iter(module_specs.keys()))
-        shared_spec = module_specs[first_module_id]
-        shared_module = shared_spec.build()
-        
-        self._rl_modules = {
-            module_id: shared_module
-            for module_id in module_specs.keys()
-        }
-        
-        self._mapping = {
-            module_id: first_module_id
-            for module_id in module_specs.keys()
-        }
+        super().setup()
+        assert (
+            "gnn-policy" in self._rl_modules
+            and isinstance(self._rl_modules["gnn-policy"], GNNPolicy)
+            and len(self._rl_modules) > 1
+        )
+        self.encoder = self._rl_modules["gnn-policy"]
 
-    def get_module(self, module_id):
-        return self._rl_modules.get(module_id)
+    def _forward(self, batch, **kwargs):
+        outputs = {}
 
-    def add_module(self, module_id, module):
-        self._rl_modules[module_id] = module
+        # Loop through the policy nets (through the given batch's keys).
+        for policy_id, policy_batch in batch.items():
+            rl_module = self._rl_modules[policy_id]
+
+            # Pass policy's observations through shared encoder to get the features for
+            # this policy.
+            policy_batch["encoder_embeddings"] = self.encoder._forward(batch[policy_id])
+
+            # Pass the policy's embeddings through the policy net.
+            outputs[policy_id] = rl_module._forward(batch[policy_id], **kwargs)
+
+        return outputs

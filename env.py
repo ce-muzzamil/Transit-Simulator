@@ -12,8 +12,11 @@ import time
 
 
 class TransitNetworkEnv(MultiAgentEnv):
-    def __init__(self, is_training=True, seed=0):
+    def __init__(self, config=None):
         super().__init__()
+
+        seed = 0
+        is_training = True
         np.random.seed(seed)
         self.is_training = is_training
         with open("transit_system_config.json", "r") as file:

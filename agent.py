@@ -287,7 +287,7 @@ class GNNPolicy(TorchRLModule):
         super().setup()
 
         self.feature_extractor = FeatureExtractor(
-            input_dim=self.config.observation_space,
+            observation_space=self.config.observation_space,
             gnn_hidden_dim=self.model_config.get("gnn_hidden_dim", 128),
             gnn_num_heads=self.model_config.get("gnn_num_heads", 4),
             embed_size=self.model_config.get("embed_size", 256),

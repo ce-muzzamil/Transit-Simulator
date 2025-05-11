@@ -282,39 +282,6 @@ class FeatureExtractor(nn.Module):
         return out
 
 
-# class Actor(nn.Module):
-#     def __init__(self, feature_dim: int, num_actions: int):
-#         super().__init__()
-#         self.feature_dim = feature_dim
-#         self.num_actions = num_actions
-
-#         self.mlp = nn.Sequential(
-#             nn.Linear(feature_dim, feature_dim),
-#             nn.ReLU(),
-#             nn.Linear(feature_dim, self.num_actions),
-#         )
-
-#     def forward(self, x):
-#         x = self.mlp(x)
-#         return x
-
-
-# class Critic(nn.Module):
-#     def __init__(self, feature_dim: int):
-#         super().__init__()
-#         self.feature_dim = feature_dim
-
-#         self.mlp = nn.Sequential(
-#             nn.Linear(feature_dim, feature_dim),
-#             nn.ReLU(),
-#             nn.Linear(feature_dim, 1),
-#         )
-
-#     def forward(self, x):
-#         x = self.mlp(x)
-#         return x
-
-
 class GNNPolicy(TorchRLModule):
     def setup(self):
         super().setup()

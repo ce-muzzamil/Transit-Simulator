@@ -281,7 +281,7 @@ class TransitNetworkEnv(MultiAgentEnv):
             max_nodes = self.max_nodes
 
         if obs.edge_attr.ndim == 1:
-            obs.edge_attr = obs.edge_attr.unsqueeze(1)
+            obs.edge_attr = np.expand_dims(obs.edge_attr, 1)
 
         # Pad node features (obs.x) along axis 0 to reach max_nodes
         pad_x = ((0, max_nodes - obs.x.shape[0]), (0, 0))  # pad rows

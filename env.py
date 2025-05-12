@@ -4,7 +4,6 @@ import pandas as pd
 from gymnasium import spaces
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from transit_system import TransitSystem
-import torch
 import networkx as nx
 from torch_geometric.utils.convert import from_networkx
 from torch_geometric.data import Data
@@ -15,9 +14,9 @@ class TransitNetworkEnv(MultiAgentEnv):
     def __init__(self, config=None):
         super().__init__()
 
-        seed = 0
-        is_training = True
-        np.random.seed(seed)
+        is_training = config["is_training"]
+        seed = np.random.seed(config["seed"])
+
         self.is_training = is_training
         with open("transit_system_config.json", "r") as file:
             self.transit_system_config = json.load(file)
@@ -154,11 +153,6 @@ class TransitNetworkEnv(MultiAgentEnv):
                     indices = [j for j in range(len(nodes))]
                     edge_index = np.array(list(zip(indices[:-1], indices[1:]))).T
                     edge_attrs = np.array(bus.distances[1:]) / 1000.0
-                    nodes, edge_index, edge_attrs = (
-                        torch.from_numpy(nodes).to(torch.long),
-                        torch.from_numpy(edge_index).to(torch.long),
-                        torch.from_numpy(edge_attrs).to(torch.float32),
-                    )
                     self.transit_system.buses.remove(bus)
                     self.transit_system.num_busses_added = 0
                     self.directed_sub_routes[(i, reversed)] = (
@@ -186,6 +180,7 @@ class TransitNetworkEnv(MultiAgentEnv):
         data = []
 
         for node in self.transit_system.topology.nodes:
+            x = node.get_array()
             if node.associated_route != -1:
                 buses_data = {}
                 for route_id in self.nodes_in_routes.keys():
@@ -206,13 +201,11 @@ class TransitNetworkEnv(MultiAgentEnv):
                         ],
                     )
 
-                x = node.get_array()
                 x = np.append(x, len(buses_data[node.associated_route][0]) / 10)
                 x = np.append(x, len(buses_data[node.associated_route][1]) / 10)
                 x = np.append(x, sum([0] + buses_data[node.associated_route][0]) / 10)
                 x = np.append(x, sum([0] + buses_data[node.associated_route][1]) / 10)
             else:
-                x = node.get_array()
                 x = np.append(x, 0)
                 x = np.append(x, 0)
                 x = np.append(x, 0)
@@ -260,7 +253,9 @@ class TransitNetworkEnv(MultiAgentEnv):
 
         data = self.get_updated_node_data()
         obs = from_networkx(graph)
-        obs.x = torch.from_numpy(np.stack(data, axis=0))
+        if len(data) == 0:
+            raise Exception("TransNET: Something went wrong in getting node data")
+        obs.x = np.stack(data, axis=0)
         self.node_indices = {v: k for k, v in enumerate(self.graph.nodes)}
         return self.fix_obs_shape(obs)
 
@@ -271,8 +266,10 @@ class TransitNetworkEnv(MultiAgentEnv):
 
     def update_graph(self):
         data = self.get_updated_node_data()
+        if len(data) == 0:
+            raise Exception("TransNET: Something went wrong in getting node data")
         obs = from_networkx(self.graph)
-        obs.x = torch.from_numpy(np.stack(data, axis=0))
+        obs.x = np.stack(data, axis=0)
         return self.fix_obs_shape(obs)
 
     def fix_obs_shape(self, obs: Data, is_subgraph=False):
@@ -286,26 +283,17 @@ class TransitNetworkEnv(MultiAgentEnv):
         if obs.edge_attr.ndim == 1:
             obs.edge_attr = obs.edge_attr.unsqueeze(1)
 
-        obs.x = torch.nn.functional.pad(
-            obs.x,
-            (0, 0, 0, max_nodes - obs.x.shape[0]),
-            mode="constant",
-            value=0,
-        )
+        # Pad node features (obs.x) along axis 0 to reach max_nodes
+        pad_x = ((0, max_nodes - obs.x.shape[0]), (0, 0))  # pad rows
+        obs.x = np.pad(obs.x, pad_x, mode='constant', constant_values=0)
 
-        obs.edge_index = torch.nn.functional.pad(
-            obs.edge_index,
-            (0, max_edges - obs.edge_index.shape[1], 0, 0),
-            mode="constant",
-            value=0,
-        )
+        # Pad edge_index along axis 1 (columns) to reach max_edges
+        pad_edge_index = ((0, 0), (0, max_edges - obs.edge_index.shape[1]))  # pad columns
+        obs.edge_index = np.pad(obs.edge_index, pad_edge_index, mode='constant', constant_values=0)
 
-        obs.edge_attr = torch.nn.functional.pad(
-            obs.edge_attr,
-            (0, 0, 0, max_edges - obs.edge_attr.shape[0]),
-            mode="constant",
-            value=0,
-        )
+        # Pad edge_attr along axis 0 (rows) to reach max_edges
+        pad_edge_attr = ((0, max_edges - obs.edge_attr.shape[0]), (0, 0))  # pad rows
+        obs.edge_attr = np.pad(obs.edge_attr, pad_edge_attr, mode='constant', constant_values=0)
 
         return {"x": obs.x, "edge_index": obs.edge_index, "edge_attr": obs.edge_attr}
 
@@ -327,7 +315,6 @@ class TransitNetworkEnv(MultiAgentEnv):
                 )
 
         reward, reward_info = self.reward(action)
-        obs: dict = self.update_graph()
 
         self.transit_system.step(self.current_time)
 
@@ -350,7 +337,7 @@ class TransitNetworkEnv(MultiAgentEnv):
         if len(self.transit_system.buses) > self.max_num_buses:
             terminated["__all__"] = True
 
-        obs = self.get_graph()
+        obs: dict = self.update_graph()
         subgraphs = self.get_sub_graphs(obs)
         all_obs = {}
 

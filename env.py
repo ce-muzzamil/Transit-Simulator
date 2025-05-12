@@ -17,6 +17,11 @@ class TransitNetworkEnv(MultiAgentEnv):
         is_training = config["is_training"]
         seed = np.random.seed(config["seed"])
 
+        if "force_seed" in config:
+            self.force_seed = config["force_seed"]
+        else:
+            self.force_seed = None
+
         self.is_training = is_training
         with open("transit_system_config.json", "r") as file:
             self.transit_system_config = json.load(file)
@@ -102,18 +107,23 @@ class TransitNetworkEnv(MultiAgentEnv):
         self.seeds = [self.seed]
 
     def _reset(self, hard_reset=True):
+        
         if hard_reset:
-            if self.is_training:
-                self.seed = np.random.randint(
-                    0, self.transit_system_config["max_training_seed"]
-                )
+            if self.force_seed is not None:
+                self.seed = self.force_seed
+                self.force_seed = None
             else:
-                self.seed = np.random.randint(
-                    self.transit_system_config["max_training_seed"],
-                    self.transit_system_config["max_training_seed"]
-                    + self.transit_system_config["max_number_of_testing_seeds"],
-                )
-            self.del_data()
+                if self.is_training:
+                    self.seed = np.random.randint(
+                        0, self.transit_system_config["max_training_seed"]
+                    )
+                else:
+                    self.seed = np.random.randint(
+                        self.transit_system_config["max_training_seed"],
+                        self.transit_system_config["max_training_seed"]
+                        + self.transit_system_config["max_number_of_testing_seeds"],
+                    )
+                self.del_data()
 
         self.transit_system = TransitSystem(
             **self.transit_system_config, seed=self.seed
@@ -144,36 +154,36 @@ class TransitNetworkEnv(MultiAgentEnv):
             except:
                 np.random.seed(int(str(time.time()).split(".")[-1]))
 
-            self.directed_sub_routes = {}
-            for i in range(self.num_routes):
-                for reversed in [False, True]:
-                    self.transit_system.add_bus_on_route(i, reversed=reversed)
-                    bus = self.transit_system.buses[0]
-                    nodes = np.array([node.node_id for node in bus.to_go])
-                    indices = [j for j in range(len(nodes))]
-                    edge_index = np.array(list(zip(indices[:-1], indices[1:]))).T
-                    edge_attrs = np.array(bus.distances[1:]) / 1000.0
-                    self.transit_system.buses.remove(bus)
-                    self.transit_system.num_busses_added = 0
-                    self.directed_sub_routes[(i, reversed)] = (
-                        nodes,
-                        edge_index,
-                        edge_attrs,
-                    )
+        self.directed_sub_routes = {}
+        for i in range(self.num_routes):
+            for reversed in [False, True]:
+                self.transit_system.add_bus_on_route(i, reversed=reversed)
+                bus = self.transit_system.buses[0]
+                nodes = np.array([node.node_id for node in bus.to_go])
+                indices = [j for j in range(len(nodes))]
+                edge_index = np.array(list(zip(indices[:-1], indices[1:]))).T
+                edge_attrs = np.array(bus.distances[1:]) / 1000.0
+                self.transit_system.buses.remove(bus)
+                self.transit_system.num_busses_added = 0
+                self.directed_sub_routes[(i, reversed)] = (
+                    nodes,
+                    edge_index,
+                    edge_attrs,
+                )
 
-            obs = self.get_graph()
-            subgraphs = self.get_sub_graphs(obs)
-            all_obs = {}
+        obs = self.get_graph()
+        subgraphs = self.get_sub_graphs(obs)
+        all_obs = {}
 
-            for key, subgraph in subgraphs.items():
-                sub_obs = {**obs, **{k + "_route": v for k, v in subgraph.items()}}
+        for key, subgraph in subgraphs.items():
+            sub_obs = {**obs, **{k + "_route": v for k, v in subgraph.items()}}
+            all_obs[self.rd_2_agent_id[key]] = sub_obs
+
+        for agent_id in self.possible_agents:
+            if agent_id not in all_obs:
                 all_obs[self.rd_2_agent_id[key]] = sub_obs
 
-            for agent_id in self.possible_agents:
-                if agent_id not in all_obs:
-                    all_obs[self.rd_2_agent_id[key]] = sub_obs
-
-            self.possible_agents = [f"agent_{i}" for i in range(self.num_routes * 2)]
+        self.possible_agents = [f"agent_{i}" for i in range(self.num_routes * 2)]
         return all_obs, {}
 
     def get_updated_node_data(self):

@@ -340,16 +340,11 @@ class SharedGNNMultiAgentModule(MultiRLModule):
 
     def _forward(self, batch, **kwargs):
         outputs = {}
-
+        print(batch)
         # Loop through the policy nets (through the given batch's keys).
         for policy_id, policy_batch in batch.items():
             rl_module = self._rl_modules[policy_id]
-
-            # Pass policy's observations through shared encoder to get the features for
-            # this policy.
             policy_batch["encoder_embeddings"] = self.encoder._forward(batch[policy_id])
-
-            # Pass the policy's embeddings through the policy net.
             outputs[policy_id] = rl_module._forward(batch[policy_id], **kwargs)
 
         return outputs

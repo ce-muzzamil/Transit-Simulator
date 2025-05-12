@@ -282,79 +282,12 @@ class FeatureExtractor(nn.Module):
         return out
 
 
-# class GNNPolicy(TorchRLModule):
-#     def setup(self):
-#         super().setup()
-
-#         self.feature_extractor = FeatureExtractor(
-#             observation_space=self.config.observation_space,
-#             gnn_hidden_dim=self.model_config.get("gnn_hidden_dim", 128),
-#             gnn_num_heads=self.model_config.get("gnn_num_heads", 4),
-#             embed_size=self.model_config.get("embed_size", 256),
-#             transformer_num_heads=self.model_config.get("transformer_num_heads", 4),
-#             num_encoder_layers=self.model_config.get("num_encoder_layers", 6),
-#             num_decoder_layers=self.model_config.get("num_decoder_layers", 6),
-#             dropout_rate=self.model_config.get("dropout_rate", 0.0),
-#         )
-
-#         self._net = (
-#             nn.Linear(
-#                 self.model_config.get("embed_size", 256),
-#                 self.model_config.get("embed_size", 256),
-#             ),
-#         )
-
-#     def _forward(self, batch, **kwargs):
-#         embeddings = self._net(self.feature_extractor(batch[Columns.OBS]))
-#         return {"encoder_embeddings": embeddings}
-
-
-# class Policy(TorchRLModule):
-#     def setup(self):
-#         super().setup()
-
-#         embedding_dim = self.model_config["embedding_dim"]
-#         hidden_dim = self.model_config["hidden_dim"]
-
-#         self._pi_head = torch.nn.Sequential(
-#             torch.nn.Linear(embedding_dim, hidden_dim),
-#             torch.nn.ReLU(),
-#             torch.nn.Linear(hidden_dim, self.action_space.n),
-#         )
-
-#     def _forward(self, batch, **kwargs):
-#         embeddings = batch["encoder_embeddings"]
-#         logits = self._pi_head(embeddings)
-#         return {Columns.ACTION_DIST_INPUTS: logits}
-
-
-# class SharedGNNMultiAgentModule(MultiRLModule):
-#     def setup(self):
-#         super().setup()
-#         assert (
-#             "gnn-policy" in self._rl_modules
-#             and isinstance(self._rl_modules["gnn-policy"], GNNPolicy)
-#             and len(self._rl_modules) > 1
-#         )
-#         self.encoder = self._rl_modules["gnn-policy"]
-
-#     def _forward(self, batch, **kwargs):
-#         outputs = {}
-#         print(batch)
-#         # Loop through the policy nets (through the given batch's keys).
-#         for policy_id, policy_batch in batch.items():
-#             rl_module = self._rl_modules[policy_id]
-#             policy_batch["encoder_embeddings"] = self.encoder._forward(batch[policy_id])
-#             outputs[policy_id] = rl_module._forward(batch[policy_id], **kwargs)
-
-#         return outputs
-
 class GNNPolicy(TorchRLModule):
     def setup(self):
         super().setup()
 
         self.feature_extractor = FeatureExtractor(
-            observation_space=self.observation_space,  # Access directly
+            observation_space=self.config.observation_space,
             gnn_hidden_dim=self.model_config.get("gnn_hidden_dim", 128),
             gnn_num_heads=self.model_config.get("gnn_num_heads", 4),
             embed_size=self.model_config.get("embed_size", 256),
@@ -407,11 +340,11 @@ class SharedGNNMultiAgentModule(MultiRLModule):
 
     def _forward(self, batch, **kwargs):
         outputs = {}
+        print(batch)
         # Loop through the policy nets (through the given batch's keys).
         for policy_id, policy_batch in batch.items():
             rl_module = self._rl_modules[policy_id]
-            encoder_out = self.encoder._forward(policy_batch) # Pass policy_batch here
-            policy_batch["encoder_embeddings"] = encoder_out["encoder_embeddings"]
-            outputs[policy_id] = rl_module._forward(policy_batch, **kwargs)
+            policy_batch["encoder_embeddings"] = self.encoder._forward(batch[policy_id])
+            outputs[policy_id] = rl_module._forward(batch[policy_id], **kwargs)
 
         return outputs

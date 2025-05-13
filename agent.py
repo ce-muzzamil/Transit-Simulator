@@ -283,8 +283,8 @@ class FeatureExtractor(nn.Module):
 
 
 class GNNPolicy(TorchRLModule):
-    def setup(self):
-        super().setup()
+    def setup(self,*args, **kwargs):
+        super().setup(*args, **kwargs)
 
         self.feature_extractor = FeatureExtractor(
             observation_space=self.config.observation_space,
@@ -310,8 +310,8 @@ class GNNPolicy(TorchRLModule):
 
 
 class Policy(TorchRLModule):
-    def setup(self):
-        super().setup()
+    def setup(self, *args, **kwargs):
+        super().setup(*args, **kwargs)
 
         embedding_dim = self.model_config["embedding_dim"]
         hidden_dim = self.model_config["hidden_dim"]
@@ -329,8 +329,8 @@ class Policy(TorchRLModule):
 
 
 class SharedGNNMultiAgentModule(MultiRLModule):
-    def setup(self):
-        super().setup()
+    def setup(self, *args, **kwargs):
+        super().setup(*args, **kwargs)
         assert (
             "gnn-policy" in self._rl_modules
             and isinstance(self._rl_modules["gnn-policy"], GNNPolicy)

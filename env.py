@@ -97,9 +97,6 @@ class TransitNetworkEnv(MultiAgentEnv):
                 ),
             }
         )
-        
-        # self.osp = get_obs_space()
-        # self.asp = get_action_space()
 
         self.observation_spaces = {key: get_obs_space() for key in self.agents}
         self.action_spaces = {key: get_action_space() for key in self.agents}

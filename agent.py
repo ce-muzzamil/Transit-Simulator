@@ -14,9 +14,15 @@ def to_torch(obs_):
     return obs
 
 def to_device(obs, device="cpu"):
-    for k1 in obs:
-        for k2 in obs[k1]:
-            obs[k1][k2] = obs[k1][k2].to(device)
+    if isinstance(obs, dict):
+        for k1 in obs:
+            if isinstance(obs[k1], dict):
+                for k2 in obs[k1]:
+                    obs[k1][k2] = obs[k1][k2].to(device)
+            else:
+                obs[k1] = obs[k1].to(device)
+    else:
+        obs = obs.to(device)
     return obs
 
 def batch_obs(obs: list):

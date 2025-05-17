@@ -25,6 +25,18 @@ def to_device(obs, device="cpu"):
         obs = obs.to(device)
     return obs
 
+def detach_grads(obs):
+    if isinstance(obs, dict):
+        for k1 in obs:
+            if isinstance(obs[k1], dict):
+                for k2 in obs[k1]:
+                    obs[k1][k2] = obs[k1][k2].detach()
+            else:
+                obs[k1] = obs[k1].detach()
+    else:
+        obs = obs.detach()
+    return obs
+
 def batch_obs(obs: list):
     bobs = {}
     keys = obs[0].keys()
@@ -383,7 +395,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu"):
             dist = Categorical(probs)
             action = dist.sample()
 
-            obs_buf.append(obs[agent_id].detach().cpu())
+            obs_buf.append(to_device(detach_grads(obs[agent_id]), device="cpu"))
             action_buf.append(action.item().detach().cpu())
             logp_buf.append(dist.log_prob(action).detach().cpu())
             value_buf.append(value.squeeze(-1).detach().cpu())

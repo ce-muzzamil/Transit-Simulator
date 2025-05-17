@@ -2,7 +2,6 @@ import json
 import numpy as np
 import pandas as pd
 from gymnasium import spaces
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from transit_system import TransitSystem
 import networkx as nx
 from torch_geometric.utils.convert import from_networkx
@@ -10,9 +9,8 @@ from torch_geometric.data import Data
 import time
 
 
-class TransitNetworkEnv(MultiAgentEnv):
+class TransitNetworkEnv:
     def __init__(self, config=None):
-        super().__init__()
 
         is_training = config["is_training"]
         seed = np.random.seed(config["seed"])

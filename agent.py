@@ -6,11 +6,17 @@ from torch.distributions import Categorical
 from copy import deepcopy
 
 
-def to_torch(obs_, device="cpu"):
+def to_torch(obs_):
     obs = deepcopy(obs_)
     for k1 in obs:
         for k2 in obs[k1]:
-            obs[k1][k2] = torch.from_numpy(obs[k1][k2]).to(torch.float32).to(device)
+            obs[k1][k2] = torch.from_numpy(obs[k1][k2]).to(torch.float32)
+    return obs
+
+def to_device(obs, device="cpu"):
+    for k1 in obs:
+        for k2 in obs[k1]:
+            obs[k1][k2] = obs[k1][k2].to(device)
     return obs
 
 def batch_obs(obs: list):
@@ -361,19 +367,20 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu"):
     obs, _ = env.reset()
 
     for _ in range(rollout_len):
-        obs = to_torch(obs, device=device)
+        obs = to_torch(obs)
 
         actions = {}
         for agent_id in obs:
             with torch.no_grad():
-                logits, value = model(obs[agent_id])
+                logits, value = model(to_device(obs[agent_id], device=device))
                 probs = F.softmax(logits, dim=0)
             dist = Categorical(probs)
             action = dist.sample()
-            obs_buf.append(obs[agent_id])
-            action_buf.append(action.item())
-            logp_buf.append(dist.log_prob(action))
-            value_buf.append(value.squeeze(-1))
+
+            obs_buf.append(obs[agent_id].detach().cpu())
+            action_buf.append(action.item().detach().cpu())
+            logp_buf.append(dist.log_prob(action).detach().cpu())
+            value_buf.append(value.squeeze(-1).detach().cpu())
             actions[agent_id] = action.item()
 
         next_obs, reward, terminated, truncated, info = env.step(actions)
@@ -440,11 +447,11 @@ def ppo_update(
     for _ in range(epochs):
         for i in range(0, len(obs_buf), batch_size):
             obs_batch = batch_obs(obs_buf[i : i + batch_size])
-            logits, new_values = model(obs_batch)
+            logits, new_values = model(to_device(obs_batch, device=device))
             dists = Categorical(logits=logits)
 
-            act_batch = torch.tensor(action_buf[i : i + batch_size])
-            old_logp_batch = torch.stack(logp_buf[i : i + batch_size])
+            act_batch = torch.tensor(action_buf[i : i + batch_size]).to(device)
+            old_logp_batch = torch.stack(logp_buf[i : i + batch_size]).to(device)
             new_logp = dists.log_prob(act_batch)
 
             ratio = torch.exp(new_logp - old_logp_batch)

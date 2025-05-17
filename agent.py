@@ -396,7 +396,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu"):
             action = dist.sample()
 
             obs_buf.append(to_device(detach_grads(obs[agent_id]), device="cpu"))
-            action_buf.append(action.item().detach().cpu())
+            action_buf.append(action.item())
             logp_buf.append(dist.log_prob(action).detach().cpu())
             value_buf.append(value.squeeze(-1).detach().cpu())
             actions[agent_id] = action.item()

@@ -92,11 +92,15 @@ class Node:
         self.departures: list[int] = [0]
         self.ins_arrivals: int = 0
         self.ins_departures: int = 0
-        self.avg_waiting_time: float = 0.0
-        self.avg_stranding_counts: float = 0.0
         self.time_of_last_bus: int = 0
         self.step_counter: int = 1
         self.associated_route = -1
+
+        self.avg_waiting_time_0 = 0
+        self.avg_waiting_time_1 = 0
+        self.avg_stranding_counts_0 = 0
+        self.avg_stranding_counts_1 = 0
+        
 
         self.zone_type_id = {k:e for e, k in enumerate(["school", "office", "shopping", "residentials"])}[self.zone_type]
 
@@ -166,12 +170,18 @@ class Node:
                                 path=path,
                             )
                         )
+
+        for passenger in self.passengers:
+            passenger.step(self)
+            
         for passenger in self.passengers:
             passenger.waiting_time += self.analysis_period_sec
             
         self.step_counter += self.analysis_period_sec
-        self.avg_waiting_time = np.max([0]+[passenger.waiting_time for passenger in self.passengers])
-        self.avg_stranding_counts = np.max([0]+[passenger.stranding_counts for passenger in self.passengers])
+        self.avg_waiting_time_0 = np.max([0]+[passenger.waiting_time for passenger in self.passengers if not passenger.is_reversed])
+        self.avg_waiting_time_1 = np.max([0]+[passenger.waiting_time for passenger in self.passengers if passenger.is_reversed])
+        self.avg_stranding_counts_0 = np.max([0]+[passenger.stranding_counts for passenger in self.passengers if not passenger.is_reversed])
+        self.avg_stranding_counts_1 = np.max([0]+[passenger.stranding_counts for passenger in self.passengers if passenger.is_reversed])
         
 
     def bus_arrived(self, time: int, bus: Bus) -> list[Passenger]:
@@ -288,11 +298,15 @@ class Node:
             "max_distance_from_exit_node": max(self.distance_to_exit_nodes()) / 3000.0,
             "average_arrivals": np.mean(self.arrivals[-10:])/100.,
             "average_departures": np.mean(self.departures[-10:])/100.,
-            "average_waiting_time": self.avg_waiting_time/60,
-            "average_stranding_counts": self.avg_stranding_counts,
+            "average_waiting_time_0": self.avg_waiting_time_0/60,
+            "average_stranding_counts_0": self.avg_stranding_counts_0,
+            "average_waiting_time_1": self.avg_waiting_time_1/60,
+            "average_stranding_counts_1": self.avg_stranding_counts_1,
             "time_elapsed_since_last_bus": (self.step_counter - self.time_of_last_bus) / 3600.,
-            "number_of_waiting_passengers": len(self.passengers) / 10,
-            "number_of_stranding_passengers": len([passenger for passenger in self.passengers if passenger.stranding_counts>0]) / 10,
+            "number_of_waiting_passengers_0": len([p for p in self.passengers if not p.is_reversed]) / 10,
+            "number_of_stranding_passengers_1": len([passenger for passenger in self.passengers if passenger.stranding_counts>0 and not passenger.is_reversed]) / 10,
+            "number_of_waiting_passengers_1": len([p for p in self.passengers if p.is_reversed]) / 10,
+            "number_of_stranding_passengers_0": len([passenger for passenger in self.passengers if passenger.stranding_counts>0 and passenger.is_reversed]) / 10,
             "zone_type": self.zone_type_id
         }
     

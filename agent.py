@@ -14,6 +14,7 @@ def to_torch(obs_):
             obs[k1][k2] = torch.from_numpy(obs[k1][k2]).to(torch.float32)
     return obs
 
+
 def to_device(obs, device="cpu"):
     if isinstance(obs, dict):
         for k1 in obs:
@@ -25,6 +26,7 @@ def to_device(obs, device="cpu"):
     else:
         obs = obs.to(device)
     return obs
+
 
 def detach_grads(obs):
     if isinstance(obs, dict):
@@ -38,13 +40,15 @@ def detach_grads(obs):
         obs = obs.detach()
     return obs
 
+
 def batch_obs(obs: list):
     bobs = {}
     keys = obs[0].keys()
     for k in keys:
         bobs[k] = torch.stack([obs[i][k] for i in range(len(obs))], dim=0)
     return bobs
-    
+
+
 class GATv2FeatureExtractor(nn.Module):
     def __init__(
         self,
@@ -289,12 +293,6 @@ class FeatureExtractor(nn.Module):
             dropout_rate=dropout_rate,
         )
 
-        self.ffn = nn.Sequential(
-            nn.Linear(embed_size, embed_size),
-            nn.ReLU(),
-            nn.Linear(embed_size, embed_size),
-        )
-
     def forward(self, observations):
         route = {
             f"x": observations[f"x_route"],
@@ -315,10 +313,9 @@ class FeatureExtractor(nn.Module):
             routes_vector = routes_vector.unsqueeze(0)
         if topology_vector.ndim == 2:
             topology_vector = topology_vector.unsqueeze(0)
-            
+
         out = self.transformer(topology_vector, routes_vector)  # N,L,E
         out = torch.mean(out, dim=1)  # N,E
-        out = self.ffn(out)  # N,E
         return out
 
 
@@ -389,10 +386,11 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu"):
         obs = to_torch(obs)
 
         actions = {}
-        for agent_id in obs:
+        for index, agent_id in enumerate(obs.keys()):
             with torch.no_grad():
                 logits, value = model(to_device(obs[agent_id], device=device))
                 probs = F.softmax(logits, dim=0)
+
             dist = Categorical(probs)
             action = dist.sample()
 
@@ -441,7 +439,7 @@ def ppo_update(
     entropy_coef=0.075,
     epochs=5,
     batch_size=32,
-    device="cpu"
+    device="cpu",
 ):
 
     returns = []
@@ -455,7 +453,7 @@ def ppo_update(
     ]
 
     for t in reversed(range(len(reward_buf))):
-        mask = 1.0 #- float(done_buf[t])
+        mask = 1.0  # - float(done_buf[t])
         delta = reward_buf[t] + gamma * last_value * mask - value_buf[t]
         gae = delta + gamma * lam * mask * gae
         advs.insert(0, gae)
@@ -473,7 +471,7 @@ def ppo_update(
             logits, new_values = model(to_device(obs_batch, device=device))
             dists = Categorical(logits=logits)
             entropy = dists.entropy().mean()
-            
+
             act_batch = torch.tensor(action_buf[i : i + batch_size]).to(device)
             old_logp_batch = torch.stack(logp_buf[i : i + batch_size]).to(device)
             new_logp = dists.log_prob(act_batch)
@@ -496,6 +494,5 @@ def ppo_update(
 
             policy_loss_hist.append(policy_loss.item())
             val_loss_hist.append(value_loss.item())
-    
+
     return np.mean(policy_loss_hist), np.mean(val_loss_hist)
-    

@@ -45,7 +45,7 @@ class TransitNetworkEnv:
         self.max_nodes = self.max_routes * self.max_route_nodes
         self.max_route_edges = self.max_route_nodes * 2
         self.max_edges = self.max_nodes * 4
-        self.num_node_features = 20
+        self.num_node_features = 24
         self.max_exit_nodes_per_route = 2
 
         self.agents = [f"agent_{i}" for i in range(self.max_routes * 2)]
@@ -180,9 +180,6 @@ class TransitNetworkEnv:
 
         self.possible_agents = [f"agent_{i}" for i in range(self.num_routes * 2)]
 
-        self.learn_reverse = True
-        if np.random.rand() > 0.5:
-            self.learn_reverse = False
         return all_obs, {}
 
     def get_updated_node_data(self):
@@ -317,10 +314,6 @@ class TransitNetworkEnv:
         action = [all_action[k] for k in sorted(all_action.keys())]
         action = action[: self.num_routes * 2]
 
-        for i in range(len(action)):
-            if not ((i % 2 == 0) == self.learn_reverse):
-                action[i] = 1
-
         for i, decision in enumerate(action):
             if decision == 1:
                 self.transit_system.add_bus_on_route(
@@ -359,9 +352,8 @@ class TransitNetworkEnv:
             all_obs[self.rd_2_agent_id[key]] = sub_obs
 
         for i, agent_id in enumerate(self.possible_agents):
-            if (i % 2 == 0) == self.learn_reverse:
-                if agent_id not in all_obs:
-                    all_obs[self.rd_2_agent_id[key]] = sub_obs
+            if agent_id not in all_obs:
+                all_obs[self.rd_2_agent_id[key]] = sub_obs
 
         reward = {k:reward[k] for k in all_obs}
         return all_obs, reward, terminated, truncated, info
@@ -426,7 +418,7 @@ class TransitNetworkEnv:
             reward_1 = reward_1 / node_counts if node_counts > 0 else 0
 
             avg_waiting_time = [
-                np.max([passenger.waiting_time for passenger in node.passengers])
+                np.max([passenger.waiting_time for passenger in node.passengers if passenger.is_reversed == is_reversed])
                 for node, num_passenger in zip(
                     [
                         node
@@ -439,7 +431,7 @@ class TransitNetworkEnv:
             ]
 
             avg_stranding_count = [
-                np.max([passenger.stranding_counts for passenger in node.passengers])
+                np.max([passenger.stranding_counts for passenger in node.passengers if passenger.is_reversed == is_reversed])
                 for node, num_passenger in zip(
                     [
                         node
@@ -465,7 +457,7 @@ class TransitNetworkEnv:
             if avg_waiting_time > 15:
                 reward_2 += -avg_waiting_time // 15
                 if action == 0:
-                    reward_2 += -14
+                    reward_2 += -7
 
             if avg_stranding_count > 0 and action == 0:
                 reward_2 += -2

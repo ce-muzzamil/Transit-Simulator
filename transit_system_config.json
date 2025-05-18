@@ -21,6 +21,6 @@
     "max_distance": 3000,
     "max_training_seed": 100000,
     "max_number_of_testing_seeds": 10,
-    "analysis_period_days": 10,
+    "analysis_period_days": 1,
     "log_passengers": false
 }

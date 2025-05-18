@@ -48,6 +48,24 @@ class Passenger:
         self.average_travel_speed: float = 0.0
         self.total_time_taken: float = 0.0
 
+
+    def step(self, node:Node):
+        min_exit_node = min(node.exit_nodes)
+        path = [node.node_id for node in self.path]
+        exit_index = path.index(min_exit_node)
+        node_index = path.index(node.node_id)
+        if exit_index == node_index:
+            self.is_reversed = True
+            return
+
+        path = path[min(exit_index, node_index):min(exit_index, node_index)] + [min_exit_node]
+        for node in [self.destination, *self.transfers]:
+            if node.node_id in path:
+                self.is_reversed = False
+                return
+            
+        self.is_reversed = True
+                
     def to_dct(self) -> dict:
         """
         Produce a dictionary from the passenger's data

@@ -411,10 +411,11 @@ class TransitNetworkEnv:
                     demand_capacity_ratio = demand / max(capacity, 1e-5)
                     node_counts += 1
 
-                    if (demand_capacity_ratio < 1 and action == 1) or (
-                        demand_capacity_ratio > 1 and action == 0
-                    ):
-                        reward_1 += -5
+                    if (demand_capacity_ratio < 1 and action == 1):
+                        reward_1 += -3
+                    elif demand_capacity_ratio > 1 and action == 0:
+                        reward_1 += -10
+                    
             reward_1 = reward_1 / node_counts if node_counts > 0 else 0
 
             avg_waiting_time = [
@@ -468,8 +469,8 @@ class TransitNetworkEnv:
                 expence_of_bus_journey = 0
             reward_3 = -expence_of_bus_journey
 
-            # reward = reward_1 + reward_2 + reward_3
-            reward = reward_2 + reward_3
+            reward = reward_1 + reward_2 + reward_3
+            # reward = reward_2 + reward_3
 
             reward /= 10
 

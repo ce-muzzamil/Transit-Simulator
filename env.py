@@ -418,7 +418,7 @@ class TransitNetworkEnv:
             reward_1 = reward_1 / node_counts if node_counts > 0 else 0
 
             avg_waiting_time = [
-                np.max([passenger.waiting_time for passenger in node.passengers if passenger.is_reversed == is_reversed])
+                np.max([0] + [passenger.waiting_time for passenger in node.passengers if passenger.is_reversed == is_reversed])
                 for node, num_passenger in zip(
                     [
                         node
@@ -431,7 +431,7 @@ class TransitNetworkEnv:
             ]
 
             avg_stranding_count = [
-                np.max([passenger.stranding_counts for passenger in node.passengers if passenger.is_reversed == is_reversed])
+                np.max([0] + [passenger.stranding_counts for passenger in node.passengers if passenger.is_reversed == is_reversed])
                 for node, num_passenger in zip(
                     [
                         node

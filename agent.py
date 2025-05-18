@@ -4,7 +4,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GATv2Conv
 from torch.distributions import Categorical
-from torch.utils.tensorboard import SummaryWriter
 from copy import deepcopy
 
 

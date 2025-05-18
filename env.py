@@ -179,6 +179,10 @@ class TransitNetworkEnv:
                 all_obs[self.rd_2_agent_id[key]] = sub_obs
 
         self.possible_agents = [f"agent_{i}" for i in range(self.num_routes * 2)]
+
+        self.learn_reverse = True
+        if np.random.rand() > 0.5:
+            self.learn_reverse = False
         return all_obs, {}
 
     def get_updated_node_data(self):
@@ -313,6 +317,10 @@ class TransitNetworkEnv:
         action = [all_action[k] for k in sorted(all_action.keys())]
         action = action[: self.num_routes * 2]
 
+        for i in range(len(action)):
+            if not ((i % 2 == 0) == self.learn_reverse):
+                action[i] = 1
+
         for i, decision in enumerate(action):
             if decision == 1:
                 self.transit_system.add_bus_on_route(
@@ -350,10 +358,12 @@ class TransitNetworkEnv:
             sub_obs = {**obs, **{k + "_route": v for k, v in subgraph.items()}}
             all_obs[self.rd_2_agent_id[key]] = sub_obs
 
-        for agent_id in self.possible_agents:
-            if agent_id not in all_obs:
-                all_obs[self.rd_2_agent_id[key]] = sub_obs
+        for i, agent_id in enumerate(self.possible_agents):
+            if (i % 2 == 0) == self.learn_reverse:
+                if agent_id not in all_obs:
+                    all_obs[self.rd_2_agent_id[key]] = sub_obs
 
+        reward = {k:reward[k] for k in all_obs}
         return all_obs, reward, terminated, truncated, info
 
     def get_sub_graphs(self, obs: dict) -> list[Data]:
@@ -455,7 +465,7 @@ class TransitNetworkEnv:
             if avg_waiting_time > 15:
                 reward_2 += -avg_waiting_time // 15
                 if action == 0:
-                    reward_2 += -7
+                    reward_2 += -14
 
             if avg_stranding_count > 0 and action == 0:
                 reward_2 += -2

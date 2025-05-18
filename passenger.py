@@ -52,7 +52,12 @@ class Passenger:
     def step(self, node:Node):
         min_exit_node = min(node.exit_nodes)
         path = [node.node_id for node in self.path]
-        exit_index = path.index(min_exit_node)
+        try:
+            exit_index = path.index(min_exit_node)
+        except:
+            self.is_reversed = True
+            return
+        
         node_index = path.index(node.node_id)
         if exit_index == node_index:
             self.is_reversed = True

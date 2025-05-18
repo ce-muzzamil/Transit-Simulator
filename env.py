@@ -468,7 +468,9 @@ class TransitNetworkEnv:
                 expence_of_bus_journey = 0
             reward_3 = -expence_of_bus_journey
 
-            reward = reward_1 + reward_2 + reward_3
+            # reward = reward_1 + reward_2 + reward_3
+            reward = reward_2 + reward_3
+
             reward /= 10
 
             reward_info = {

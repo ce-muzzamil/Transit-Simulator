@@ -1,8 +1,10 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GATv2Conv
 from torch.distributions import Categorical
+from torch.utils.tensorboard import SummaryWriter
 from copy import deepcopy
 
 
@@ -351,13 +353,13 @@ class Model(nn.Module):
             dropout_rate=dropout_rate,
         )
 
-        self.actor = self.ffn = nn.Sequential(
+        self.actor = nn.Sequential(
             nn.Linear(embed_size, embed_size),
             nn.ReLU(),
             nn.Linear(embed_size, self.num_actions),
         )
 
-        self.critic = self.ffn = nn.Sequential(
+        self.critic = nn.Sequential(
             nn.Linear(embed_size, embed_size),
             nn.ReLU(),
             nn.Linear(embed_size, 1),
@@ -418,6 +420,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu"):
         reward_buf,
         terminated_buf,
         truncated_buf,
+        info_buf,
         logp_buf,
         value_buf,
     )
@@ -436,6 +439,7 @@ def ppo_update(
     gamma=0.995,
     lam=0.95,
     clip_ratio=0.2,
+    entropy_coef=0.075,
     epochs=5,
     batch_size=32,
     device="cpu"
@@ -462,12 +466,15 @@ def ppo_update(
     advs = torch.tensor(advs, dtype=torch.float32, requires_grad=False).to(device)
     returns = torch.tensor(returns, dtype=torch.float32, requires_grad=False).to(device)
 
+    policy_loss_hist = []
+    val_loss_hist = []
     for _ in range(epochs):
         for i in range(0, len(obs_buf), batch_size):
             obs_batch = batch_obs(obs_buf[i : i + batch_size])
             logits, new_values = model(to_device(obs_batch, device=device))
             dists = Categorical(logits=logits)
-
+            entropy = dists.entropy().mean()
+            
             act_batch = torch.tensor(action_buf[i : i + batch_size]).to(device)
             old_logp_batch = torch.stack(logp_buf[i : i + batch_size]).to(device)
             new_logp = dists.log_prob(act_batch)
@@ -481,9 +488,15 @@ def ppo_update(
             policy_loss = -torch.min(surr1, surr2).mean()
 
             value_loss = F.mse_loss(new_values.squeeze(-1), ret_batch)
-            loss = policy_loss + 0.5 * value_loss
+            loss = policy_loss + 0.5 * value_loss - entropy_coef * entropy
 
             optimizer.zero_grad()
 
             loss.backward()
             optimizer.step()
+
+            policy_loss_hist.append(policy_loss.item())
+            val_loss_hist.append(value_loss.item())
+    
+    return np.mean(policy_loss_hist), np.mean(val_loss_hist)
+    

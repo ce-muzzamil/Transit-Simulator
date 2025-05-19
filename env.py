@@ -412,9 +412,10 @@ class TransitNetworkEnv:
                     node_counts += 1
 
                     if (demand_capacity_ratio < 1 and action == 1):
-                        reward_1 += -3
+                        reward_1 += -1
                     elif demand_capacity_ratio > 1 and action == 0:
-                        reward_1 += -10
+                        reward_1 += -1
+                    
 
                     # if (demand_capacity_ratio < 1 and action == 1) or (demand_capacity_ratio > 1 and action == 0):
                     #     reward_1 += -2
@@ -472,12 +473,13 @@ class TransitNetworkEnv:
                 expence_of_bus_journey = 0
             reward_3 = -expence_of_bus_journey
 
-            reward = reward_1 + reward_2 + reward_3
+            # reward = reward_1 + reward_2 + reward_3
             # reward = reward_2 + reward_3
             # reward = reward_1 + reward_2
+            reward = reward_1
 
 
-            reward /= 10
+            # reward /= 10
 
             reward_info = {
                 "reward_type_1": reward_1,

@@ -419,9 +419,6 @@ class TransitNetworkEnv:
                     else:
                         reward_1 += 1
                     
-
-                    # if (demand_capacity_ratio < 1 and action == 1) or (demand_capacity_ratio > 1 and action == 0):
-                    #     reward_1 += -2
                     
             reward_1 = reward_1 / node_counts if node_counts > 0 else 1
 
@@ -464,8 +461,8 @@ class TransitNetworkEnv:
             reward_2 = 0
             if avg_waiting_time > 15:
                 reward_2 += -avg_waiting_time // 15
-                # if action == 0:
-                #     reward_2 += -7
+                if action == 0:
+                    reward_2 += -7
 
             if avg_stranding_count > 0 and action == 0:
                 reward_2 += -2

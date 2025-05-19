@@ -92,7 +92,9 @@ class Node:
         self.departures: list[int] = [0]
         self.ins_arrivals: int = 0
         self.ins_departures: int = 0
-        self.time_of_last_bus: int = 0
+        self.time_of_last_bus_0: int = 0
+        self.time_of_last_bus_1: int = 0
+
         self.step_counter: int = 1
         self.associated_route = -1
 
@@ -250,8 +252,11 @@ class Node:
             if passenger in self.passengers:
                 self.passengers.remove(passenger)
                 self.ins_departures += 1
-        
-        self.time_of_last_bus = time
+
+        if not bus.reversed:
+            self.time_of_last_bus_0 = time
+        else:
+            self.time_of_last_bus_1 = time
         return to_drop
     
 
@@ -302,7 +307,8 @@ class Node:
             "average_stranding_counts_0": self.avg_stranding_counts_0,
             "average_waiting_time_1": self.avg_waiting_time_1/60,
             "average_stranding_counts_1": self.avg_stranding_counts_1,
-            "time_elapsed_since_last_bus": (self.step_counter - self.time_of_last_bus) / 3600.,
+            "time_elapsed_since_last_bus_0": (self.step_counter - self.time_of_last_bus_0) / 3600.,
+            "time_elapsed_since_last_bus_1": (self.step_counter - self.time_of_last_bus_1) / 3600.,
             "number_of_waiting_passengers_0": len([p for p in self.passengers if not p.is_reversed]) / 10,
             "number_of_stranding_passengers_1": len([passenger for passenger in self.passengers if passenger.stranding_counts>0 and not passenger.is_reversed]) / 10,
             "number_of_waiting_passengers_1": len([p for p in self.passengers if p.is_reversed]) / 10,

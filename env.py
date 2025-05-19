@@ -45,7 +45,7 @@ class TransitNetworkEnv:
         self.max_nodes = self.max_routes * self.max_route_nodes
         self.max_route_edges = self.max_route_nodes * 2
         self.max_edges = self.max_nodes * 4
-        self.num_node_features = 24
+        self.num_node_features = 25
         self.max_exit_nodes_per_route = 2
 
         self.agents = [f"agent_{i}" for i in range(self.max_routes * 2)]

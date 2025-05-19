@@ -478,6 +478,8 @@ def ppo_update(
         advs = torch.tensor(advs, dtype=torch.float32, requires_grad=False).to(device)
         advs = (advs - advs.mean()) / (advs.std() + 1e-8)
         returns = torch.tensor(returns, dtype=torch.float32, requires_grad=False).to(device)
+        returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+
 
         for _ in range(epochs):
             for i in range(0, len(obs_buf[agent_id]), batch_size):

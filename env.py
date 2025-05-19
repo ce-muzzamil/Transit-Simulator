@@ -395,10 +395,9 @@ class TransitNetworkEnv:
 
             for node in self.transit_system.topology.nodes:
                 if route_id in node.affliated_route_ids:
-                    num_passengers.append(len(node.passengers))
-                    demand = (
-                        len(node.passengers) / 2 + 1
-                    )  # devided by 2 to get approx only one side (reversed or not)
+                    passengers = [p for p in node.passengers if p.is_reversed == is_reversed]
+                    num_passengers.append(passengers)
+                    demand = len(passengers) + 1
                     capacity = 1
                     for bus in self.transit_system.buses:
                         if (

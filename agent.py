@@ -315,9 +315,8 @@ class FeatureExtractor(nn.Module):
         if topology_vector.ndim == 2:
             topology_vector = topology_vector.unsqueeze(0)
 
-        # out = self.transformer(topology_vector, routes_vector)  # N,L,E
+        out = self.transformer(topology_vector, routes_vector)  # N,L,E
 
-        out = routes_vector
         out = torch.mean(out, dim=1)  # N,E
         return out
 
@@ -372,6 +371,7 @@ class Model(nn.Module):
 
 
 def collect_rollout(env, model, rollout_len=1080, device="cpu"):
+    obs, _ = env.reset()
     (
         obs_buf,
         action_buf,
@@ -381,9 +381,16 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu"):
         info_buf,
         logp_buf,
         value_buf,
-    ) = ([], [], [], [], [], [], [], [])
-
-    obs, _ = env.reset()
+    ) = (
+        {agent_id: [] for agent_id in env.possible_agents},
+        {agent_id: [] for agent_id in env.possible_agents},
+        {agent_id: [] for agent_id in env.possible_agents},
+        [],
+        [],
+        [],
+        {agent_id: [] for agent_id in env.possible_agents},
+        {agent_id: [] for agent_id in env.possible_agents},
+    )
 
     for _ in range(rollout_len):
         obs = to_torch(obs)
@@ -392,27 +399,28 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu"):
         for index, agent_id in enumerate(obs.keys()):
             with torch.no_grad():
                 logits, value = model(to_device(obs[agent_id], device=device))
-                probs = F.softmax(logits, dim=0)
+                probs = F.softmax(logits, dim=-1)
 
             dist = Categorical(probs)
             action = dist.sample()
 
-            obs_buf.append(to_device(detach_grads(obs[agent_id]), device="cpu"))
-            action_buf.append(action.item())
-            logp_buf.append(dist.log_prob(action).detach().cpu())
-            value_buf.append(value.squeeze(-1).detach().cpu())
+            obs_buf[agent_id].append(to_device(detach_grads(obs[agent_id]), device="cpu"))
+            action_buf[agent_id].append(action.item())
+            logp_buf[agent_id].append(dist.log_prob(action).detach().cpu())
+            value_buf[agent_id].append(value.squeeze(-1).detach().cpu())
             actions[agent_id] = action.item()
 
         next_obs, reward, terminated, truncated, info = env.step(actions)
         for agent_id in obs:
-            reward_buf.append(torch.tensor(reward[agent_id], dtype=torch.float32))
+            reward_buf[agent_id].append(torch.tensor(reward[agent_id], dtype=torch.float32))
+
         info_buf.append(info)
         terminated_buf.append(terminated["__all__"])
         truncated_buf.append(truncated["__all__"])
 
         obs = next_obs
         if terminated["__all__"]:
-            obs = env.reset()
+            obs, _ = env.reset()
 
     return (
         obs_buf,
@@ -455,47 +463,50 @@ def ppo_update(
         for truncated, terminated in zip(terminated_buf, truncated_buf)
     ]
 
-    for t in reversed(range(len(reward_buf))):
-        mask = 1.0  # - float(done_buf[t])
-        delta = reward_buf[t] + gamma * last_value * mask - value_buf[t]
-        gae = delta + gamma * lam * mask * gae
-        advs.insert(0, gae)
-        last_value = value_buf[t]
-        returns.insert(0, gae + value_buf[t])
-
-    advs = torch.tensor(advs, dtype=torch.float32, requires_grad=False).to(device)
-    returns = torch.tensor(returns, dtype=torch.float32, requires_grad=False).to(device)
-
     policy_loss_hist = []
     val_loss_hist = []
-    for _ in range(epochs):
-        for i in range(0, len(obs_buf), batch_size):
-            obs_batch = batch_obs(obs_buf[i : i + batch_size])
-            logits, new_values = model(to_device(obs_batch, device=device))
-            dists = Categorical(logits=logits)
-            entropy = dists.entropy().mean()
+    for agent_id in obs_buf.keys():
 
-            act_batch = torch.tensor(action_buf[i : i + batch_size]).to(device)
-            old_logp_batch = torch.stack(logp_buf[i : i + batch_size]).to(device)
-            new_logp = dists.log_prob(act_batch)
+        for t in reversed(range(len(reward_buf[agent_id]))):
+            mask = 1.0 - float(done_buf[t])
+            delta = reward_buf[agent_id][t] + gamma * last_value * mask - value_buf[agent_id][t]
+            gae = delta + gamma * lam * mask * gae
+            advs.insert(0, gae)
+            last_value = value_buf[agent_id][t]
+            returns.insert(0, gae + value_buf[agent_id][t])
 
-            ratio = torch.exp(new_logp - old_logp_batch)
-            adv_batch = advs[i : i + batch_size]
-            ret_batch = returns[i : i + batch_size]
+        advs = torch.tensor(advs, dtype=torch.float32, requires_grad=False).to(device)
+        advs = (advs - advs.mean()) / (advs.std() + 1e-8)
+        returns = torch.tensor(returns, dtype=torch.float32, requires_grad=False).to(device)
 
-            surr1 = ratio * adv_batch
-            surr2 = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * adv_batch
-            policy_loss = -torch.min(surr1, surr2).mean()
+        for _ in range(epochs):
+            for i in range(0, len(obs_buf[agent_id]), batch_size):
+                obs_batch = batch_obs(obs_buf[agent_id][i : i + batch_size])
+                logits, new_values = model(to_device(obs_batch, device=device))
+                dists = Categorical(logits=logits)
+                entropy = dists.entropy().mean()
 
-            value_loss = F.mse_loss(new_values.squeeze(-1), ret_batch)
-            loss = policy_loss + 0.5 * value_loss - entropy_coef * entropy
+                act_batch = torch.tensor(action_buf[agent_id][i : i + batch_size]).to(device)
+                old_logp_batch = torch.stack(logp_buf[agent_id][i : i + batch_size]).to(device)
+                new_logp = dists.log_prob(act_batch)
 
-            optimizer.zero_grad()
+                ratio = torch.exp(new_logp - old_logp_batch)
+                adv_batch = advs[i : i + batch_size]
+                ret_batch = returns[i : i + batch_size]
 
-            loss.backward()
-            optimizer.step()
+                surr1 = ratio * adv_batch
+                surr2 = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * adv_batch
+                policy_loss = -torch.min(surr1, surr2).mean()
 
-            policy_loss_hist.append(policy_loss.item())
-            val_loss_hist.append(value_loss.item())
+                value_loss = F.mse_loss(new_values.squeeze(-1), ret_batch)
+                loss = policy_loss + 0.5 * value_loss - entropy_coef * entropy
+
+                optimizer.zero_grad()
+
+                loss.backward()
+                optimizer.step()
+
+                policy_loss_hist.append(policy_loss.item())
+                val_loss_hist.append(value_loss.item())
 
     return np.mean(policy_loss_hist), np.mean(val_loss_hist)

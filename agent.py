@@ -308,7 +308,6 @@ class FeatureExtractor(nn.Module):
 
         # topology_vector = self.topology(observations)  # N,L,E
         routes_vector = self.route(route)  # (N, L, E)
-        out = routes_vector #### DEL
 
         if routes_vector.ndim == 2:
             routes_vector = routes_vector.unsqueeze(0)
@@ -316,6 +315,7 @@ class FeatureExtractor(nn.Module):
         #     topology_vector = topology_vector.unsqueeze(0)
 
         # out = self.transformer(topology_vector, routes_vector)  # N,L,E
+        out = routes_vector #### DEL
         out = torch.mean(out, dim=1)  # N,E
         return out
 

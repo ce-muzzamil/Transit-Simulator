@@ -453,11 +453,6 @@ def ppo_update(
     device="cpu",
 ):
 
-    returns = []
-    advs = []
-    gae = 0
-    last_value = 0
-
     done_buf = [
         terminated or truncated
         for truncated, terminated in zip(terminated_buf, truncated_buf)
@@ -466,6 +461,11 @@ def ppo_update(
     policy_loss_hist = []
     val_loss_hist = []
     for agent_id in obs_buf.keys():
+
+        returns = []
+        advs = []
+        gae = 0
+        last_value = 0
 
         for t in reversed(range(len(reward_buf[agent_id]))):
             mask = 1.0 - float(done_buf[t])

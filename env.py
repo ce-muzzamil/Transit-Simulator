@@ -396,8 +396,10 @@ class TransitNetworkEnv:
             for node in self.transit_system.topology.nodes:
                 if route_id in node.affliated_route_ids:
                     passengers = [p for p in node.passengers if p.is_reversed == is_reversed]
-                    num_passengers.append(passengers)
-                    demand = len(passengers) + 1
+                    num_passengers.append(len(passengers))
+                    demand = (
+                        len(passengers) + 1
+                    ) 
                     capacity = 1
                     for bus in self.transit_system.buses:
                         if (
@@ -478,7 +480,7 @@ class TransitNetworkEnv:
             reward = reward_1
 
 
-            # reward /= 10
+            reward /= 10
 
             reward_info = {
                 "reward_type_1": reward_1,

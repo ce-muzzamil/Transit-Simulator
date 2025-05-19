@@ -497,12 +497,12 @@ class TransitNetworkEnv:
             ]
 
             if len(avg_waiting_time) > 0:
-                avg_waiting_time = np.mean(avg_waiting_time) / 60.0  # minutes
+                avg_waiting_time = np.max(avg_waiting_time) / 60.0  # minutes
             else:
                 avg_waiting_time = 0.0
 
             if len(avg_stranding_count) > 0:
-                avg_stranding_count = np.mean(avg_stranding_count)
+                avg_stranding_count = np.max(avg_stranding_count)
             else:
                 avg_stranding_count = 0  # counts
 

@@ -102,7 +102,7 @@ class TransitNetworkEnv:
         self.seeds = [self.seed]
 
     def _reset(self, hard_reset=True):
-        
+
         if hard_reset:
             if self.force_seed is not None:
                 self.seed = self.force_seed
@@ -291,15 +291,22 @@ class TransitNetworkEnv:
 
         # Pad node features (obs.x) along axis 0 to reach max_nodes
         pad_x = ((0, max_nodes - obs.x.shape[0]), (0, 0))  # pad rows
-        obs.x = np.pad(obs.x, pad_x, mode='constant', constant_values=0)
+        obs.x = np.pad(obs.x, pad_x, mode="constant", constant_values=0)
 
         # Pad edge_index along axis 1 (columns) to reach max_edges
-        pad_edge_index = ((0, 0), (0, max_edges - obs.edge_index.shape[1]))  # pad columns
-        obs.edge_index = np.pad(obs.edge_index, pad_edge_index, mode='constant', constant_values=0)
+        pad_edge_index = (
+            (0, 0),
+            (0, max_edges - obs.edge_index.shape[1]),
+        )  # pad columns
+        obs.edge_index = np.pad(
+            obs.edge_index, pad_edge_index, mode="constant", constant_values=0
+        )
 
         # Pad edge_attr along axis 0 (rows) to reach max_edges
         pad_edge_attr = ((0, max_edges - obs.edge_attr.shape[0]), (0, 0))  # pad rows
-        obs.edge_attr = np.pad(obs.edge_attr, pad_edge_attr, mode='constant', constant_values=0)
+        obs.edge_attr = np.pad(
+            obs.edge_attr, pad_edge_attr, mode="constant", constant_values=0
+        )
 
         return {"x": obs.x, "edge_index": obs.edge_index, "edge_attr": obs.edge_attr}
 
@@ -355,7 +362,7 @@ class TransitNetworkEnv:
             if agent_id not in all_obs:
                 all_obs[self.rd_2_agent_id[key]] = sub_obs
 
-        reward = {k:reward[k] for k in all_obs}
+        reward = {k: reward[k] for k in all_obs}
         return all_obs, reward, terminated, truncated, info
 
     def get_sub_graphs(self, obs: dict) -> list[Data]:
@@ -380,8 +387,7 @@ class TransitNetworkEnv:
 
         return subgraphs
 
-    def reward(self, actions) -> float:
-
+    def reward(self, actions) -> tuple[dict]:
         rewards = {}
         rewards_info = {}
 
@@ -389,110 +395,147 @@ class TransitNetworkEnv:
             route_id = int(i // 2)
             is_reversed = not (i % 2 == 0)
 
-            reward_1 = 0
-            node_counts = 0
-            num_passengers = []
+            reward = 0
+            demand = 0
+            capacity = 0
+
+            bus_capacity = 0
 
             for node in self.transit_system.topology.nodes:
                 if route_id in node.affliated_route_ids:
-                    passengers = [p for p in node.passengers if p.is_reversed == is_reversed]
-                    num_passengers.append(len(passengers))
-                    demand = (
-                        len(passengers) + 1
-                    ) 
-                    capacity = 1
-                    for bus in self.transit_system.buses:
-                        if (
-                            bus.service_route == route_id
-                            and bus.reversed == is_reversed
-                        ):
-                            if node in bus.to_go:
-                                capacity += bus.capacity - len(bus.passengers)
+                    passengers = [
+                        p for p in node.passengers if p.is_reversed == is_reversed
+                    ]
+                    demand += len(passengers)
 
-                    demand_capacity_ratio = demand / max(capacity, 1e-5)
-                    node_counts += 1
+            for bus in self.transit_system.buses:
+                if (
+                    bus.service_route == route_id
+                    and bus.reversed == is_reversed
+                ):
+                    capacity += bus.capacity - len(bus.passengers)
+                    bus_capacity = bus.capacity
 
-                    if (demand_capacity_ratio < 1 and action == 1):
-                        reward_1 += -1
-                    elif demand_capacity_ratio > 1 and action == 0:
-                        reward_1 += -1
-                    else:
-                        reward_1 += 1
-                    
-                    
-            reward_1 = reward_1 / node_counts if node_counts > 0 else 1
-
-            avg_waiting_time = [
-                np.max([0] + [passenger.waiting_time for passenger in node.passengers if passenger.is_reversed == is_reversed])
-                for node, num_passenger in zip(
-                    [
-                        node
-                        for node in self.transit_system.topology.nodes
-                        if route_id in node.affliated_route_ids
-                    ],
-                    num_passengers,
-                )
-                if num_passenger > 0
-            ]
-
-            avg_stranding_count = [
-                np.max([0] + [passenger.stranding_counts for passenger in node.passengers if passenger.is_reversed == is_reversed])
-                for node, num_passenger in zip(
-                    [
-                        node
-                        for node in self.transit_system.topology.nodes
-                        if route_id in node.affliated_route_ids
-                    ],
-                    num_passengers,
-                )
-                if num_passenger > 0
-            ]
-
-            if len(avg_waiting_time) > 0:
-                avg_waiting_time = np.mean(avg_waiting_time) / 60.0  # minutes
-            else:
-                avg_waiting_time = 0.0
-
-            if len(avg_stranding_count) > 0:
-                avg_stranding_count = np.mean(avg_stranding_count)
-            else:
-                avg_stranding_count = 0  # counts
-
-            reward_2 = 0
-            if avg_waiting_time > 15:
-                reward_2 += -avg_waiting_time // 15
-                if action == 0:
-                    reward_2 += -7
-
-            if avg_stranding_count > 0 and action == 0:
-                reward_2 += -2
-
-            if action == 1:
-                expence_of_bus_journey = 7  # 1.5 km/leter
-            else:
-                expence_of_bus_journey = 0
-            reward_3 = -expence_of_bus_journey
-
-            # reward = reward_1 + reward_2 + reward_3
-            # reward = reward_2 + reward_3
-            # reward = reward_1 + reward_2
-            reward = reward_1
-
-
-            reward /= 10
-
-            reward_info = {
-                "reward_type_1": reward_1,
-                "reward_type_2": reward_2,
-                "reward_type_3": reward_3,
-                "reward": reward,
-            }
+            if (capacity - demand) > bus_capacity and action == 1:
+                reward -= 1
+            elif (demand > capacity) and action == 0:
+                reward -= 1
 
             rewards[self.possible_agents[i]] = reward
-            rewards_info[self.possible_agents[i]] = reward_info
-
-        pd.DataFrame(rewards_info.values()).mean().to_dict()
+            
         return rewards, rewards_info
+
+    # def reward(self, actions) -> float:
+
+    #     rewards = {}
+    #     rewards_info = {}
+
+    #     for i, action in enumerate(actions):
+    #         route_id = int(i // 2)
+    #         is_reversed = not (i % 2 == 0)
+
+    #         reward_1 = 0
+    #         node_counts = 0
+    #         num_passengers = []
+
+    #         for node in self.transit_system.topology.nodes:
+    #             if route_id in node.affliated_route_ids:
+    #                 passengers = [p for p in node.passengers if p.is_reversed == is_reversed]
+    #                 num_passengers.append(len(passengers))
+    #                 demand = (
+    #                     len(passengers) + 1
+    #                 )
+    #                 capacity = 1
+    #                 for bus in self.transit_system.buses:
+    #                     if (
+    #                         bus.service_route == route_id
+    #                         and bus.reversed == is_reversed
+    #                     ):
+    #                         if node in bus.to_go:
+    #                             capacity += bus.capacity - len(bus.passengers)
+
+    #                 demand_capacity_ratio = demand / max(capacity, 1e-5)
+    #                 node_counts += 1
+
+    #                 if (demand_capacity_ratio < 1 and action == 1):
+    #                     reward_1 += -1
+    #                 elif demand_capacity_ratio > 1 and action == 0:
+    #                     reward_1 += -1
+    #                 else:
+    #                     reward_1 += 1
+
+    #         reward_1 = reward_1 / node_counts if node_counts > 0 else 1
+
+    #         avg_waiting_time = [
+    #             np.max([0] + [passenger.waiting_time for passenger in node.passengers if passenger.is_reversed == is_reversed])
+    #             for node, num_passenger in zip(
+    #                 [
+    #                     node
+    #                     for node in self.transit_system.topology.nodes
+    #                     if route_id in node.affliated_route_ids
+    #                 ],
+    #                 num_passengers,
+    #             )
+    #             if num_passenger > 0
+    #         ]
+
+    #         avg_stranding_count = [
+    #             np.max([0] + [passenger.stranding_counts for passenger in node.passengers if passenger.is_reversed == is_reversed])
+    #             for node, num_passenger in zip(
+    #                 [
+    #                     node
+    #                     for node in self.transit_system.topology.nodes
+    #                     if route_id in node.affliated_route_ids
+    #                 ],
+    #                 num_passengers,
+    #             )
+    #             if num_passenger > 0
+    #         ]
+
+    #         if len(avg_waiting_time) > 0:
+    #             avg_waiting_time = np.mean(avg_waiting_time) / 60.0  # minutes
+    #         else:
+    #             avg_waiting_time = 0.0
+
+    #         if len(avg_stranding_count) > 0:
+    #             avg_stranding_count = np.mean(avg_stranding_count)
+    #         else:
+    #             avg_stranding_count = 0  # counts
+
+    #         reward_2 = 0
+    #         if avg_waiting_time > 15:
+    #             reward_2 += -avg_waiting_time // 15
+    #             if action == 0:
+    #                 reward_2 += -7
+
+    #         if avg_stranding_count > 0 and action == 0:
+    #             reward_2 += -2
+
+    #         if action == 1:
+    #             expence_of_bus_journey = 7  # 1.5 km/leter
+    #         else:
+    #             expence_of_bus_journey = 0
+    #         reward_3 = -expence_of_bus_journey
+
+    #         # reward = reward_1 + reward_2 + reward_3
+    #         # reward = reward_2 + reward_3
+    #         # reward = reward_1 + reward_2
+    #         reward = reward_1
+
+    #         reward /= 10
+
+    #         reward_info = {
+    #             "reward_type_1": reward_1,
+    #             "reward_type_2": reward_2,
+    #             "reward_type_3": reward_3,
+    #             "reward": reward,
+    #         }
+
+    #         rewards[self.possible_agents[i]] = reward
+    #         rewards_info[self.possible_agents[i]] = reward_info
+
+    #     pd.DataFrame(rewards_info.values()).mean().to_dict()
+    #     return rewards, rewards_info
 
     def render(self):
         pass

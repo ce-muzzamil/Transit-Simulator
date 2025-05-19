@@ -516,7 +516,7 @@ class TransitNetworkEnv:
                 reward_2 += -2
 
             if action == 1:
-                expence_of_bus_journey = -1  # 1.5 km/leter
+                expence_of_bus_journey = 1  # 1.5 km/leter
             else:
                 expence_of_bus_journey = 0
             reward_3 = -expence_of_bus_journey

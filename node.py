@@ -250,6 +250,8 @@ class Node:
 
         for passenger in aboard:
             if passenger in self.passengers:
+                passenger.waiting_time = 0 # have corrupted the log
+                passenger.stranding_counts = 0 # have corrupted the log
                 self.passengers.remove(passenger)
                 self.ins_departures += 1
 

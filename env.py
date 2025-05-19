@@ -45,7 +45,7 @@ class TransitNetworkEnv:
         self.max_nodes = self.max_routes * self.max_route_nodes
         self.max_route_edges = self.max_route_nodes * 2
         self.max_edges = self.max_nodes * 4
-        self.num_node_features = 25
+        self.num_node_features = 26
         self.max_exit_nodes_per_route = 2
 
         self.agents = [f"agent_{i}" for i in range(self.max_routes * 2)]
@@ -211,11 +211,13 @@ class TransitNetworkEnv:
                 x = np.append(x, len(buses_data[node.associated_route][1]) / 10)
                 x = np.append(x, sum([0] + buses_data[node.associated_route][0]) / 10)
                 x = np.append(x, sum([0] + buses_data[node.associated_route][1]) / 10)
+                x = np.append(x, -1)
             else:
                 x = np.append(x, 0)
                 x = np.append(x, 0)
                 x = np.append(x, 0)
                 x = np.append(x, 0)
+                x = np.append(x, -1)
 
             x = np.append(
                 x,
@@ -298,6 +300,7 @@ class TransitNetworkEnv:
             (0, 0),
             (0, max_edges - obs.edge_index.shape[1]),
         )  # pad columns
+
         obs.edge_index = np.pad(
             obs.edge_index, pad_edge_index, mode="constant", constant_values=0
         )
@@ -379,6 +382,7 @@ class TransitNetworkEnv:
                     edge_attr=edge_attr,
                     y=None if "y" not in obs else obs["y"][indices],
                 )
+                sub_data["x"][:, -1] = float(is_reversed)
                 subgraphs[(route_id, is_reversed)] = self.fix_obs_shape(
                     sub_data, is_subgraph=True
                 )
@@ -422,7 +426,7 @@ class TransitNetworkEnv:
                 reward -= 1
 
             rewards[self.possible_agents[i]] = reward
-            
+
         return rewards, rewards_info
 
     # def reward(self, actions) -> float:

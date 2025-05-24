@@ -356,10 +356,10 @@ class TransitNetworkEnv:
 
         info = {**reward_info}
 
-        for agent in self.possible_agents:
-            if self.avg_waiting_time[agent] > 60:
-                self.killed_agents.append(agent)
-                terminated[agent] = True
+        for agent_id in self.possible_agents:
+            if self.avg_waiting_time[agent_id] > 60:
+                self.killed_agents.append(agent_id)
+                terminated[agent_id] = True
                 reward[agent_id] -= 10000
         
         for killed_agent in self.killed_agents:

@@ -386,8 +386,8 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu"):
         {agent_id: [] for agent_id in env.possible_agents},
         {agent_id: [] for agent_id in env.possible_agents},
         {agent_id: [] for agent_id in env.possible_agents},
-        [],
-        [],
+        {agent_id: [] for agent_id in env.possible_agents},
+        {agent_id: [] for agent_id in env.possible_agents},
         [],
         {agent_id: [] for agent_id in env.possible_agents},
         {agent_id: [] for agent_id in env.possible_agents},
@@ -414,18 +414,17 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu"):
 
             actions[agent_id] = action.item()
 
-
         next_obs, reward, terminated, truncated, info = env.step(actions)
         for agent_id in obs:
             reward_buf[agent_id].append(torch.tensor(reward[agent_id], dtype=torch.float32))
+            terminated_buf[agent_id].append(terminated[agent_id])
+            truncated_buf[agent_id].append(truncated[agent_id])
 
         info_buf.append(info)
-        terminated_buf.append(terminated["__all__"])
-        truncated_buf.append(truncated["__all__"])
-
+        
         obs = next_obs
-        if terminated["__all__"]:
-            obs, _ = env.reset()
+        if len(next_obs.keys()) == 0:
+            break
 
     return (
         obs_buf,
@@ -438,8 +437,6 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu"):
         value_buf,
         old_logits_buf
     )
-
-
 
 def ppo_update( 
     model,
@@ -462,15 +459,14 @@ def ppo_update(
     device="cpu",
 ):
 
-    done_buf = [
-        terminated or truncated
-        for truncated, terminated in zip(terminated_buf, truncated_buf)
-    ]
-
     policy_loss_hist = []
     val_loss_hist = []
 
     for agent_id in obs_buf.keys():
+        done_buf = [
+        terminated or truncated
+        for truncated, terminated in zip(terminated_buf[agent_id], truncated_buf[agent_id])
+    ]
         returns = []
         advs = []
         gae = 0

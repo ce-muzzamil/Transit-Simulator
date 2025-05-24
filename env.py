@@ -120,6 +120,7 @@ class TransitNetworkEnv:
                     )
                 self.del_data()
 
+        self.avg_waiting_time = {k:0 for k in self.possible_agents}
         self.transit_system = TransitSystem(
             **self.transit_system_config, seed=self.seed
         )
@@ -179,6 +180,7 @@ class TransitNetworkEnv:
                 all_obs[self.rd_2_agent_id[key]] = sub_obs
 
         self.possible_agents = [f"agent_{i}" for i in range(self.num_routes * 2)]
+        self.killed_agents = []
 
         return all_obs, {}
 
@@ -343,15 +345,26 @@ class TransitNetworkEnv:
         else:
             self.current_time = self.current_time + self.analysis_period_sec
 
-        truncated = {"__all__": False}
-        terminated = {"__all__": False}
+        truncated = {agent_id: False for agent_id in self.possible_agents}
+        terminated = {agent_id: False for agent_id in self.possible_agents}
+        
         if self.current_day >= self.analysis_period_days:
-            truncated["__all__"] = True
+            for agent_id in self.possible_agents:
+                truncated[agent_id] = True
+                reward[agent_id] += 10000
+                self.killed_agents.append(agent_id)
 
         info = {**reward_info}
 
-        if len(self.transit_system.buses) > self.max_num_buses:
-            terminated["__all__"] = True
+        for agent in self.possible_agents:
+            if self.avg_waiting_time[agent] > 60:
+                self.killed_agents.append(agent)
+                terminated[agent] = True
+                reward[agent_id] -= 10000
+        
+        for killed_agent in self.killed_agents:
+            if killed_agent in self.possible_agents:
+                self.possible_agents.remove(killed_agent)
 
         obs: dict = self.update_graph()
         subgraphs = self.get_sub_graphs(obs)
@@ -390,44 +403,6 @@ class TransitNetworkEnv:
             raise Exception("Higher batch is processed to create subgraphs")
 
         return subgraphs
-
-    # def reward(self, actions) -> tuple[dict]:
-    #     rewards = {}
-    #     rewards_info = {}
-
-    #     for i, action in enumerate(actions):
-    #         route_id = int(i // 2)
-    #         is_reversed = not (i % 2 == 0)
-
-    #         reward = 0
-    #         demand = 0
-    #         capacity = 0
-
-    #         bus_capacity = 0
-
-    #         for node in self.transit_system.topology.nodes:
-    #             if route_id in node.affliated_route_ids:
-    #                 passengers = [
-    #                     p for p in node.passengers if p.is_reversed == is_reversed
-    #                 ]
-    #                 demand += len(passengers)
-
-    #         for bus in self.transit_system.buses:
-    #             if (
-    #                 bus.service_route == route_id
-    #                 and bus.reversed == is_reversed
-    #             ):
-    #                 capacity += bus.capacity - len(bus.passengers)
-    #                 bus_capacity = bus.capacity
-
-    #         if (capacity - demand) > bus_capacity and action == 1:
-    #             reward -= 1
-    #         elif (demand > capacity) and action == 0:
-    #             reward -= 1
-
-    #         rewards[self.possible_agents[i]] = reward
-
-    #     return rewards, rewards_info
 
     def reward(self, actions) -> float:
         rewards = {}
@@ -486,6 +461,8 @@ class TransitNetworkEnv:
 
             if avg_stranding_count > 0 and action == 0:
                 reward_2 += -2
+
+            self.avg_waiting_time[self.possible_agents[i]] = avg_waiting_time
 
             if action == 1:
                 expence_of_bus_journey = 7  # 1.5 km/leter

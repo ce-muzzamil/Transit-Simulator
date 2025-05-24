@@ -355,7 +355,7 @@ class TransitNetworkEnv:
         for agent_id in self.possible_agents:
             if self.avg_waiting_time[agent_id] > 60:
                 terminated[agent_id] = True
-                reward[agent_id] = 10000
+                reward[agent_id] = -10000
 
         obs: dict = self.update_graph()
         subgraphs = self.get_sub_graphs(obs)

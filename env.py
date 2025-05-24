@@ -444,7 +444,7 @@ class TransitNetworkEnv:
 
             reward_2 = 0
             if avg_waiting_time > 15:
-                reward_2 += -(avg_waiting_time // 5)
+                reward_2 += -(avg_waiting_time // 15)
 
             if avg_stranding_count > 0 and action == 0:
                 reward_2 += -2

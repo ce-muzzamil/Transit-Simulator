@@ -369,8 +369,8 @@ class Model(nn.Module):
         return logits, value
 
 
-def collect_rollout(env, model, rollout_len=1080, device="cpu"):
-    obs, _ = env.reset(hard_reset=False)
+def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True):
+    obs, _ = env.reset(hard_reset=hard_reset)
     (
         obs_buf,
         action_buf,

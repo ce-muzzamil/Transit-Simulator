@@ -395,14 +395,15 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu"):
     )
 
     killed_agents = set()
-    for _ in range(rollout_len):
+    for step_count in range(rollout_len):
         obs = to_torch(obs)
 
         actions = {}
         for index, agent_id in enumerate(env.possible_agents):
             if agent_id in killed_agents:
+                actions[agent_id] = 0
                 continue
-            
+
             with torch.no_grad():
                 logits, value = model(to_device(obs[agent_id], device=device))
                 probs = F.softmax(logits, dim=-1)
@@ -424,6 +425,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu"):
             if terminated[agent_id] or truncated[agent_id]:
                 if agent_id not in killed_agents:
                     killed_agents.add(agent_id)
+                    print(f"Agent {agent_id} killed at step {step_count + 1}")
             terminated_buf[agent_id].append(terminated[agent_id])
             truncated_buf[agent_id].append(truncated[agent_id])
 

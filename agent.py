@@ -370,7 +370,7 @@ class Model(nn.Module):
 
 
 def collect_rollout(env, model, rollout_len=1080, device="cpu"):
-    obs, _ = env.reset()
+    obs, _ = env.reset(hard_reset=False)
     (
         obs_buf,
         action_buf,

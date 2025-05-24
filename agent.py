@@ -394,11 +394,15 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu"):
         {agent_id: [] for agent_id in env.possible_agents},
     )
 
+    killed_agents = set()
     for _ in range(rollout_len):
         obs = to_torch(obs)
 
         actions = {}
-        for index, agent_id in enumerate(obs.keys()):
+        for index, agent_id in enumerate(env.possible_agents):
+            if agent_id in killed_agents:
+                continue
+            
             with torch.no_grad():
                 logits, value = model(to_device(obs[agent_id], device=device))
                 probs = F.softmax(logits, dim=-1)
@@ -417,13 +421,16 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu"):
         next_obs, reward, terminated, truncated, info = env.step(actions)
         for agent_id in obs:
             reward_buf[agent_id].append(torch.tensor(reward[agent_id], dtype=torch.float32))
+            if terminated[agent_id] or truncated[agent_id]:
+                if agent_id not in killed_agents:
+                    killed_agents.add(agent_id)
             terminated_buf[agent_id].append(terminated[agent_id])
             truncated_buf[agent_id].append(truncated[agent_id])
 
         info_buf.append(info)
         
         obs = next_obs
-        if len(next_obs.keys()) == 0:
+        if len(killed_agents) == len(env.possible_agents):
             break
 
     return (

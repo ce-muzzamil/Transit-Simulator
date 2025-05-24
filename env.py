@@ -180,7 +180,6 @@ class TransitNetworkEnv:
                 all_obs[self.rd_2_agent_id[key]] = sub_obs
 
         self.possible_agents = [f"agent_{i}" for i in range(self.num_routes * 2)]
-        self.killed_agents = []
 
         return all_obs, {}
 
@@ -323,16 +322,14 @@ class TransitNetworkEnv:
         these binary variables corresponds to each exit node of the route and the binary variable is to indicate whether to add a bus for that exit node or not.
         Since, a single model is used for all routes, The len of action can be changed from toplogy to toplogy but the mechanism will not fail.
         """
-        action = [all_action[k] for k in sorted(all_action.keys())]
-        action = action[: self.num_routes * 2]
 
-        for i, decision in enumerate(action):
+        for i, (agent_id, decision) in enumerate(all_action.items()):
             if decision == 1:
                 self.transit_system.add_bus_on_route(
                     i // 2, reversed=False if i % 2 == 0 else True
                 )
 
-        reward, reward_info = self.reward(action)
+        reward, reward_info = self.reward(all_action)
 
         self.transit_system.step(self.current_time)
 
@@ -351,20 +348,14 @@ class TransitNetworkEnv:
         if self.current_day >= self.analysis_period_days:
             for agent_id in self.possible_agents:
                 truncated[agent_id] = True
-                reward[agent_id] += 10000
-                self.killed_agents.append(agent_id)
+                reward[agent_id] = 10000
 
         info = {**reward_info}
 
         for agent_id in self.possible_agents:
             if self.avg_waiting_time[agent_id] > 60:
-                self.killed_agents.append(agent_id)
                 terminated[agent_id] = True
-                reward[agent_id] -= 10000
-        
-        for killed_agent in self.killed_agents:
-            if killed_agent in self.possible_agents:
-                self.possible_agents.remove(killed_agent)
+                reward[agent_id] = 10000
 
         obs: dict = self.update_graph()
         subgraphs = self.get_sub_graphs(obs)
@@ -373,10 +364,6 @@ class TransitNetworkEnv:
         for key, subgraph in subgraphs.items():
             sub_obs = {**obs, **{k + "_route": v for k, v in subgraph.items()}}
             all_obs[self.rd_2_agent_id[key]] = sub_obs
-
-        for i, agent_id in enumerate(self.possible_agents):
-            if agent_id not in all_obs:
-                all_obs[self.rd_2_agent_id[key]] = sub_obs
 
         reward = {k: reward[k] for k in all_obs}
         return all_obs, reward, terminated, truncated, info
@@ -408,7 +395,7 @@ class TransitNetworkEnv:
         rewards = {}
         rewards_info = {}
 
-        for i, action in enumerate(actions):
+        for i, (agent_id, action) in enumerate(actions.items()):
             route_id = int(i // 2)
             is_reversed = not (i % 2 == 0)
 
@@ -478,8 +465,8 @@ class TransitNetworkEnv:
                 "reward": reward,
             }
 
-            rewards[self.possible_agents[i]] = reward
-            rewards_info[self.possible_agents[i]] = reward_info
+            rewards[agent_id] = reward
+            rewards_info[agent_id] = reward_info
 
         pd.DataFrame(rewards_info.values()).mean().to_dict()
         return rewards, rewards_info

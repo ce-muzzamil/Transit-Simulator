@@ -420,7 +420,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu"):
             actions[agent_id] = action.item()
 
         next_obs, reward, terminated, truncated, info = env.step(actions)
-        for agent_id in enumerate(env.possible_agents):
+        for agent_id in env.possible_agents:
             if agent_id not in killed_agents:                
                 reward_buf[agent_id].append(torch.tensor(reward[agent_id], dtype=torch.float32))
                 terminated_buf[agent_id].append(terminated[agent_id])

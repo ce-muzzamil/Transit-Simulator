@@ -412,10 +412,18 @@ class Model(nn.Module):
         self.actor = nn.Sequential(
             nn.Linear(embed_size, embed_size),
             nn.ReLU(),
+            nn.Linear(embed_size, embed_size),
+            nn.ReLU(),
             nn.Linear(embed_size, self.num_actions),
         )
 
         self.critic = nn.Sequential(
+            nn.Linear(embed_size, embed_size),
+            nn.ReLU(),
+            nn.Linear(embed_size, embed_size),
+            nn.ReLU(),
+            nn.Linear(embed_size, embed_size),
+            nn.ReLU(),
             nn.Linear(embed_size, embed_size),
             nn.ReLU(),
             nn.Linear(embed_size, 1),
@@ -606,6 +614,7 @@ def ppo_update(
 
                 ret_batch = returns[batch_indices]
                 v_pred = new_values.squeeze(-1)
+                ret_batch = (ret_batch - ret_batch.mean()) / (ret_batch.std() + 1e-8)
                 print(f"[{agent_id}] ret_batch[:5]: {ret_batch[:5]}", f"[{agent_id}] v_pred[:5]: {v_pred[:5]}")
                 value_loss = F.mse_loss(v_pred, ret_batch)
 

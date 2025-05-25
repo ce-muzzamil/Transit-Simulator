@@ -470,12 +470,11 @@ class Model(nn.Module):
         )
 
     def forward(self, x):
-        embed_actor = self.feature_extractor_actor(x)
+        embed = self.feature_extractor(x)
 
-        logits = self.actor(embed_actor).squeeze(-1)
-        value = self.critic(embed_actor.clone().detach()).squeeze(-1)
+        logits = self.actor(embed).squeeze(-1)
+        value = self.critic(embed.clone().detach()).squeeze(-1)
         return logits, value
-
 
 def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True):
     obs, _ = env.reset(hard_reset=hard_reset)

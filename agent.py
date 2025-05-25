@@ -604,7 +604,7 @@ def ppo_update(
         # Normalize advantages
         advs = (advs - advs.mean()) / (advs.std() + 1e-8)
         # Optional: normalize returns
-        # returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+        returns = (returns - returns.mean()) / (returns.std() + 1e-8)
 
         for epoch in range(epochs):
             for i in range(0, T, batch_size):

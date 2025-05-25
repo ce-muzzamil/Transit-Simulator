@@ -661,81 +661,71 @@ def ppo_update(
     batch_size=32,
     device="cpu",
 ):
-    """
-    Updated PPO update with:
-      - Return normalization
-      - Clipped value loss
-      - Gradient clipping
-      - Bootstrapped last_value
-      - Optional logging
-    """
     policy_losses, value_losses = [], []
 
     for agent_id in obs_buf.keys():
-        # Build done mask per agent
         done_buf = [t or tr for t, tr in zip(terminated_buf[agent_id], truncated_buf[agent_id])]
         T = len(reward_buf[agent_id])
 
-        # Compute last_value using model if last state not terminal
-        # For simplicity, assume last_value = 0 when done
-        last_value = 0.0
-        returns = []
-        advs = []
+        # GAE-Lambda and returns computation
+        returns, advs = [], []
         gae = 0.0
+        last_value = 0.0
 
-        # GAE-Lambda computation (backward)
         for t in reversed(range(T)):
             mask = 1.0 - float(done_buf[t])
             delta = reward_buf[agent_id][t] + gamma * last_value * mask - value_buf[agent_id][t]
             gae = delta + gamma * lam * mask * gae
             advs.insert(0, gae)
-            last_value = value_buf[agent_id][t]
             returns.insert(0, gae + value_buf[agent_id][t])
+            last_value = value_buf[agent_id][t]
 
         # Convert to tensors
         advs = torch.tensor(advs, dtype=torch.float32, device=device)
-        # Normalize advantages
-        advs = (advs - advs.mean()) / (advs.std() + 1e-8)
         returns = torch.tensor(returns, dtype=torch.float32, device=device)
+        old_values = torch.tensor(value_buf[agent_id], dtype=torch.float32, device=device)
+        old_logps = torch.stack(logp_buf[agent_id]).to(device)
 
-        # PPO update epochs
+        # Normalize advantages (and optionally returns)
+        advs = (advs - advs.mean()) / (advs.std() + 1e-8)
+        # Optional: normalize returns
+        # returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+
         for _ in range(epochs):
             for i in range(0, T, batch_size):
-                # Prepare batch
                 obs_batch = batch_obs(obs_buf[agent_id][i : i + batch_size])
                 obs_batch = to_device(obs_batch, device=device)
+
                 logits, new_values = model(obs_batch)
                 dist = Categorical(logits=logits)
                 entropy = dist.entropy().mean()
 
                 actions = torch.tensor(action_buf[agent_id][i : i + batch_size], device=device)
-                old_logp = torch.stack(logp_buf[agent_id][i : i + batch_size]).to(device)
                 new_logp = dist.log_prob(actions)
+                old_logp = old_logps[i : i + batch_size]
 
-                # Policy loss (clipped)
-                ratio = torch.exp(new_logp - old_logp)
+                # Policy loss with clipping
                 adv_batch = advs[i : i + batch_size]
+                ratio = torch.exp(new_logp - old_logp)
                 surr1 = ratio * adv_batch
                 surr2 = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * adv_batch
                 policy_loss = -torch.min(surr1, surr2).mean()
 
-                # Value loss (clipped)
+                # Value loss with clipping
                 ret_batch = returns[i : i + batch_size]
                 v_pred = new_values.squeeze(-1)
-                # Old value for clipping
-                # We approximate old_value as ret_batch - adv_batch
-                old_value = (ret_batch - adv_batch).detach()
+                old_value = old_values[i : i + batch_size]
                 v_pred_clipped = old_value + (v_pred - old_value).clamp(-clip_ratio, clip_ratio)
+
                 value_loss_unclipped = (v_pred - ret_batch).pow(2)
                 value_loss_clipped = (v_pred_clipped - ret_batch).pow(2)
                 value_loss = torch.max(value_loss_unclipped, value_loss_clipped).mean()
 
-                # Combined loss
+                # Total loss
                 loss = policy_loss + vf_coef * value_loss - entropy_coef * entropy
 
                 optimizer.zero_grad()
                 loss.backward()
-                # Gradient clipping
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
                 optimizer.step()
 

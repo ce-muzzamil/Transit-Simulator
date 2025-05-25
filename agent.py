@@ -487,7 +487,6 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
         info_buf,
         logp_buf,
         value_buf,
-        old_logits_buf
     ) = (
         {agent_id: [] for agent_id in env.possible_agents},
         {agent_id: [] for agent_id in env.possible_agents},
@@ -495,7 +494,6 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
         {agent_id: [] for agent_id in env.possible_agents},
         {agent_id: [] for agent_id in env.possible_agents},
         [],
-        {agent_id: [] for agent_id in env.possible_agents},
         {agent_id: [] for agent_id in env.possible_agents},
         {agent_id: [] for agent_id in env.possible_agents},
     )
@@ -521,7 +519,6 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
             action_buf[agent_id].append(action.item())
             logp_buf[agent_id].append(dist.log_prob(action).detach().cpu())
             value_buf[agent_id].append(value.squeeze(-1).detach().cpu())
-            old_logits_buf[agent_id].append(logits.detach().cpu())  # FIX: Move to CPU
 
             actions[agent_id] = action.item()
 
@@ -553,7 +550,6 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
         info_buf,
         logp_buf,
         value_buf,
-        old_logits_buf
     )
 
 
@@ -671,23 +667,29 @@ def ppo_update(
                 epoch_value_loss += value_loss.item()
                 num_batches += 1
 
-            # FIX: KL divergence check using old logits
-            with torch.no_grad():
-                # Get current policy on full dataset
-                all_obs = batch_obs(obs_buf[agent_id])
-                all_obs = to_device(all_obs, device=device)
-                current_logits, _ = model(all_obs)
-                
-                # Use stored old logits for KL computation
-                old_logits_tensor = torch.stack(old_logits_buf[agent_id]).to(device)
-                
-                old_dist = Categorical(logits=old_logits_tensor)
-                new_dist = Categorical(logits=current_logits)
-                kl = torch.distributions.kl.kl_divergence(old_dist, new_dist).mean()
-                
-                if kl > target_kl:
-                    print(f"[{agent_id}] Early stopping at epoch {epoch} due to KL={kl:.5f}")
-                    break
+            # FIX: KL divergence approximation using log probability ratio
+            if num_batches > 0:
+                with torch.no_grad():
+                    # Sample a batch to estimate KL divergence
+                    sample_size = min(64, T)
+                    sample_indices = torch.randperm(T)[:sample_size]
+                    
+                    sample_obs = batch_obs([obs_buf[agent_id][idx] for idx in sample_indices])
+                    sample_obs = to_device(sample_obs, device=device)
+                    sample_actions = torch.tensor([action_buf[agent_id][idx] for idx in sample_indices], device=device)
+                    
+                    new_logits, _ = model(sample_obs)
+                    new_dist = Categorical(logits=new_logits)
+                    new_logp = new_dist.log_prob(sample_actions)
+                    old_logp_sample = old_logps[sample_indices]
+                    
+                    # Approximate KL using log probability difference
+                    logp_diff = new_logp - old_logp_sample
+                    approx_kl = ((torch.exp(logp_diff) - 1) - logp_diff).mean()
+                    
+                    if approx_kl > target_kl:
+                        print(f"[{agent_id}] Early stopping at epoch {epoch} due to approx_KL={approx_kl:.5f}")
+                        break
 
             if num_batches > 0:
                 policy_losses.append(epoch_policy_loss / num_batches)

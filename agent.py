@@ -466,7 +466,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                 logits, value = model(to_device(obs[agent_id], device=device))
                 probs = F.softmax(logits, dim=-1)
 
-            dist = Categorical(probs)
+            dist = Categorical(probs=probs)
             action = dist.sample()
 
             obs_buf[agent_id].append(to_device(detach_grads(obs[agent_id]), device="cpu"))
@@ -533,9 +533,9 @@ def ppo_update(
 
     for agent_id in obs_buf.keys():
         done_buf = [
-        terminated or truncated
-        for truncated, terminated in zip(terminated_buf[agent_id], truncated_buf[agent_id])
-    ]
+                    t or tr
+                    for t, tr in zip(terminated_buf[agent_id], truncated_buf[agent_id])
+                    ]
         returns = []
         advs = []
         gae = 0
@@ -552,7 +552,7 @@ def ppo_update(
         advs = torch.tensor(advs, dtype=torch.float32).to(device)
         advs = (advs - advs.mean()) / (advs.std() + 1e-8)
         returns = torch.tensor(returns, dtype=torch.float32).to(device)
-        returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+        # returns = (returns - returns.mean()) / (returns.std() + 1e-8)
 
         for _ in range(epochs):
             for i in range(0, len(obs_buf[agent_id]), batch_size):

@@ -569,7 +569,93 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
         old_logits_buf
     )
 
-def ppo_update( 
+# def ppo_update( 
+#     model,
+#     optimizer,
+#     obs_buf,
+#     action_buf,
+#     reward_buf,
+#     terminated_buf,
+#     truncated_buf,
+#     logp_buf,
+#     value_buf,
+#     old_logits_buf,  # <-- You must provide old logits per agent per timestep
+#     gamma=0.995,
+#     lam=0.95,
+#     clip_ratio=0.2,
+#     entropy_coef=0.075,
+#     kl_coef=0.2,  # <-- New hyperparameter
+#     epochs=5,
+#     batch_size=32,
+#     device="cpu",
+# ):
+
+#     policy_loss_hist = []
+#     val_loss_hist = []
+
+#     for agent_id in obs_buf.keys():
+#         done_buf = [
+#                     t or tr
+#                     for t, tr in zip(terminated_buf[agent_id], truncated_buf[agent_id])
+#                     ]
+#         returns = []
+#         advs = []
+#         gae = 0
+#         last_value = 0
+
+#         for t in reversed(range(len(reward_buf[agent_id]))):
+#             mask = 1.0 - float(done_buf[t])
+#             delta = reward_buf[agent_id][t] + gamma * last_value * mask - value_buf[agent_id][t]
+#             gae = delta + gamma * lam * mask * gae
+#             advs.insert(0, gae)
+#             last_value = value_buf[agent_id][t]
+#             returns.insert(0, gae + value_buf[agent_id][t])
+
+#         advs = torch.tensor(advs, dtype=torch.float32).to(device)
+#         advs = (advs - advs.mean()) / (advs.std() + 1e-8)
+#         returns = torch.tensor(returns, dtype=torch.float32).to(device)
+
+#         for _ in range(epochs):
+#             for i in range(0, len(obs_buf[agent_id]), batch_size):
+#                 obs_batch = batch_obs(obs_buf[agent_id][i : i + batch_size])
+#                 logits, new_values = model(to_device(obs_batch, device=device))
+#                 new_dists = Categorical(logits=logits)
+#                 entropy = new_dists.entropy().mean()
+
+#                 act_batch = torch.tensor(action_buf[agent_id][i : i + batch_size]).to(device)
+#                 old_logp_batch = torch.stack(logp_buf[agent_id][i : i + batch_size]).to(device)
+#                 new_logp = new_dists.log_prob(act_batch)
+
+#                 # KL divergence penalty
+#                 with torch.no_grad():
+#                     old_logits_batch = torch.stack(old_logits_buf[agent_id][i : i + batch_size]).to(device)
+#                 old_dists = Categorical(logits=old_logits_batch)
+#                 kl = torch.distributions.kl.kl_divergence(old_dists, new_dists).mean()
+
+#                 # PPO clipped surrogate objective
+#                 ratio = torch.exp(new_logp - old_logp_batch)
+#                 adv_batch = advs[i : i + batch_size]
+#                 ret_batch = returns[i : i + batch_size]
+
+#                 surr1 = ratio * adv_batch
+#                 surr2 = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * adv_batch
+#                 policy_loss = -torch.min(surr1, surr2).mean()
+
+#                 value_loss = F.mse_loss(new_values.squeeze(-1), ret_batch)
+
+#                 # Final loss with KL penalty
+#                 loss = policy_loss + 0.5 * value_loss - entropy_coef * entropy + kl_coef * kl
+
+#                 optimizer.zero_grad()
+#                 loss.backward()
+#                 optimizer.step()
+
+#                 policy_loss_hist.append(policy_loss.item())
+#                 val_loss_hist.append(value_loss.item())
+
+#     return np.mean(policy_loss_hist), np.mean(val_loss_hist)
+
+def ppo_update(
     model,
     optimizer,
     obs_buf,
@@ -579,31 +665,39 @@ def ppo_update(
     truncated_buf,
     logp_buf,
     value_buf,
-    old_logits_buf,  # <-- You must provide old logits per agent per timestep
     gamma=0.995,
     lam=0.95,
     clip_ratio=0.2,
     entropy_coef=0.075,
-    kl_coef=0.2,  # <-- New hyperparameter
+    vf_coef=0.5,
     epochs=5,
     batch_size=32,
     device="cpu",
 ):
-
-    policy_loss_hist = []
-    val_loss_hist = []
+    """
+    Updated PPO update with:
+      - Return normalization
+      - Clipped value loss
+      - Gradient clipping
+      - Bootstrapped last_value
+      - Optional logging
+    """
+    policy_losses, value_losses = [], []
 
     for agent_id in obs_buf.keys():
-        done_buf = [
-                    t or tr
-                    for t, tr in zip(terminated_buf[agent_id], truncated_buf[agent_id])
-                    ]
+        # Build done mask per agent
+        done_buf = [t or tr for t, tr in zip(terminated_buf[agent_id], truncated_buf[agent_id])]
+        T = len(reward_buf[agent_id])
+
+        # Compute last_value using model if last state not terminal
+        # For simplicity, assume last_value = 0 when done
+        last_value = 0.0
         returns = []
         advs = []
-        gae = 0
-        last_value = 0
+        gae = 0.0
 
-        for t in reversed(range(len(reward_buf[agent_id]))):
+        # GAE-Lambda computation (backward)
+        for t in reversed(range(T)):
             mask = 1.0 - float(done_buf[t])
             delta = reward_buf[agent_id][t] + gamma * last_value * mask - value_buf[agent_id][t]
             gae = delta + gamma * lam * mask * gae
@@ -611,47 +705,54 @@ def ppo_update(
             last_value = value_buf[agent_id][t]
             returns.insert(0, gae + value_buf[agent_id][t])
 
-        advs = torch.tensor(advs, dtype=torch.float32).to(device)
+        # Convert to tensors
+        advs = torch.tensor(advs, dtype=torch.float32, device=device)
+        # Normalize advantages
         advs = (advs - advs.mean()) / (advs.std() + 1e-8)
-        returns = torch.tensor(returns, dtype=torch.float32).to(device)
-        # returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+        returns = torch.tensor(returns, dtype=torch.float32, device=device)
 
+        # PPO update epochs
         for _ in range(epochs):
-            for i in range(0, len(obs_buf[agent_id]), batch_size):
+            for i in range(0, T, batch_size):
+                # Prepare batch
                 obs_batch = batch_obs(obs_buf[agent_id][i : i + batch_size])
-                logits, new_values = model(to_device(obs_batch, device=device))
-                new_dists = Categorical(logits=logits)
-                entropy = new_dists.entropy().mean()
+                obs_batch = to_device(obs_batch, device=device)
+                logits, new_values = model(obs_batch)
+                dist = Categorical(logits=logits)
+                entropy = dist.entropy().mean()
 
-                act_batch = torch.tensor(action_buf[agent_id][i : i + batch_size]).to(device)
-                old_logp_batch = torch.stack(logp_buf[agent_id][i : i + batch_size]).to(device)
-                new_logp = new_dists.log_prob(act_batch)
+                actions = torch.tensor(action_buf[agent_id][i : i + batch_size], device=device)
+                old_logp = torch.stack(logp_buf[agent_id][i : i + batch_size]).to(device)
+                new_logp = dist.log_prob(actions)
 
-                # KL divergence penalty
-                with torch.no_grad():
-                    old_logits_batch = torch.stack(old_logits_buf[agent_id][i : i + batch_size]).to(device)
-                old_dists = Categorical(logits=old_logits_batch)
-                kl = torch.distributions.kl.kl_divergence(old_dists, new_dists).mean()
-
-                # PPO clipped surrogate objective
-                ratio = torch.exp(new_logp - old_logp_batch)
+                # Policy loss (clipped)
+                ratio = torch.exp(new_logp - old_logp)
                 adv_batch = advs[i : i + batch_size]
-                ret_batch = returns[i : i + batch_size]
-
                 surr1 = ratio * adv_batch
                 surr2 = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * adv_batch
                 policy_loss = -torch.min(surr1, surr2).mean()
 
-                value_loss = F.mse_loss(new_values.squeeze(-1), ret_batch)
+                # Value loss (clipped)
+                ret_batch = returns[i : i + batch_size]
+                v_pred = new_values.squeeze(-1)
+                # Old value for clipping
+                # We approximate old_value as ret_batch - adv_batch
+                old_value = (ret_batch - adv_batch).detach()
+                v_pred_clipped = old_value + (v_pred - old_value).clamp(-clip_ratio, clip_ratio)
+                value_loss_unclipped = (v_pred - ret_batch).pow(2)
+                value_loss_clipped = (v_pred_clipped - ret_batch).pow(2)
+                value_loss = torch.max(value_loss_unclipped, value_loss_clipped).mean()
 
-                # Final loss with KL penalty
-                loss = policy_loss + 0.5 * value_loss - entropy_coef * entropy + kl_coef * kl
+                # Combined loss
+                loss = policy_loss + vf_coef * value_loss - entropy_coef * entropy
 
                 optimizer.zero_grad()
                 loss.backward()
+                # Gradient clipping
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
                 optimizer.step()
 
-                policy_loss_hist.append(policy_loss.item())
-                val_loss_hist.append(value_loss.item())
+                policy_losses.append(policy_loss.item())
+                value_losses.append(value_loss.item())
 
-    return np.mean(policy_loss_hist), np.mean(val_loss_hist)
+    return np.mean(policy_losses), np.mean(value_losses)

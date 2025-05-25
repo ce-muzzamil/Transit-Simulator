@@ -639,15 +639,15 @@ def ppo_update(
                     logp_diff = new_logp - old_logp_sample
                     approx_kl = ((torch.exp(logp_diff) - 1) - logp_diff).mean()
 
-                    print(f"[{agent_id}] Epoch {epoch}: "
-                          f"PL: {epoch_policy_loss / num_batches:.6f}, "
-                          f"VL: {epoch_value_loss / num_batches:.6f}, "
-                          f"H: {epoch_entropy / num_batches:.6f}, "
-                          f"KL: {approx_kl:.6f}")
+                    # print(f"[{agent_id}] Epoch {epoch}: "
+                    #       f"PL: {epoch_policy_loss / num_batches:.6f}, "
+                    #       f"VL: {epoch_value_loss / num_batches:.6f}, "
+                    #       f"H: {epoch_entropy / num_batches:.6f}, "
+                    #       f"KL: {approx_kl:.6f}")
 
-                    if approx_kl > target_kl:
-                        print(f"[{agent_id}] Early stopping at epoch {epoch} due to KL={approx_kl:.5f}")
-                        break
+                    # if approx_kl > target_kl:
+                    #     print(f"[{agent_id}] Early stopping at epoch {epoch} due to KL={approx_kl:.5f}")
+                    #     break
 
             policy_losses.append(epoch_policy_loss / num_batches)
             value_losses.append(epoch_value_loss / num_batches)

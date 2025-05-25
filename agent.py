@@ -533,7 +533,9 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                     if agent_id not in killed_agents:
                         killed_agents.add(agent_id)
                 if terminated[agent_id]:
-                        print(f"Agent {agent_id} killed at step {step_count + 1}")
+                        print(f"Agent {agent_id} killed at step {step_count + 1} with final reward: {reward[agent_id]}")
+                elif truncated[agent_id]:
+                        print(f"Agent {agent_id} completed at step {step_count + 1} with final reward: {reward[agent_id]}")
 
         info_buf.append(info)
         
@@ -566,8 +568,8 @@ def ppo_update(
     gamma=0.995,
     lam=0.95,
     clip_ratio=0.2,
-    entropy_coef=0.075,
-    vf_coef=0.5,
+    entropy_coef=0.01,  # Reduced from 0.075 - high entropy prevents learning terminal rewards
+    vf_coef=1.0,  # Increased - value function is critical for sparse rewards
     target_kl=0.015,
     epochs=5,
     batch_size=32,
@@ -582,54 +584,74 @@ def ppo_update(
             
         done_buf = [t or tr for t, tr in zip(terminated_buf[agent_id], truncated_buf[agent_id])]
         T = len(reward_buf[agent_id])
+        
+        print(f"Agent {agent_id}: {T} steps, final done: {done_buf[-1] if T > 0 else 'N/A'}")
+        print(f"Agent {agent_id}: total reward: {sum(reward_buf[agent_id]):.2f}")
 
-        # GAE and returns - FIX: Handle bootstrap value properly
+        # CRITICAL FIX: Bootstrap value calculation for sparse rewards
         returns, advs = [], []
         gae = 0.0
         
-        # FIX: Get bootstrap value from final observation if not terminated
-        if T > 0 and not done_buf[-1]:
-            with torch.no_grad():
-                final_obs = to_device(obs_buf[agent_id][-1], device=device)
-                _, last_value = model(final_obs.unsqueeze(0) if final_obs.dim() == 1 else final_obs)
-                last_value = last_value.squeeze(-1).item()
+        # For sparse reward environments, bootstrap value is crucial
+        if T > 0:
+            if done_buf[-1]:
+                # Terminal state - no bootstrap needed (value should be 0)
+                last_value = 0.0
+            else:
+                # Non-terminal - get value estimate for next state
+                with torch.no_grad():
+                    final_obs = to_device(obs_buf[agent_id][-1], device=device)
+                    if final_obs.dim() == 1:
+                        final_obs = final_obs.unsqueeze(0)
+                    _, last_value_tensor = model(final_obs)
+                    last_value = last_value_tensor.squeeze(-1).item()
         else:
             last_value = 0.0
         
+        # GAE calculation - CRITICAL for sparse rewards
         for t in reversed(range(T)):
             if t == T - 1:
                 next_value = last_value
+                next_non_terminal = 1.0 - float(done_buf[t])
             else:
                 next_value = value_buf[agent_id][t + 1]
+                next_non_terminal = 1.0 - float(done_buf[t])
                 
-            mask = 1.0 - float(done_buf[t])
-            delta = reward_buf[agent_id][t] + gamma * next_value * mask - value_buf[agent_id][t]
-            gae = delta + gamma * lam * mask * gae
+            # Standard GAE computation
+            delta = reward_buf[agent_id][t] + gamma * next_value * next_non_terminal - value_buf[agent_id][t]
+            gae = delta + gamma * lam * next_non_terminal * gae
+            
             advs.insert(0, gae)
             returns.insert(0, gae + value_buf[agent_id][t])
 
         # Convert to tensors
         advs = torch.tensor(advs, dtype=torch.float32, device=device)
         returns = torch.tensor(returns, dtype=torch.float32, device=device)
+        old_values = torch.tensor(value_buf[agent_id], dtype=torch.float32, device=device)
         old_logps = torch.stack(logp_buf[agent_id]).to(device)
 
-        # Normalize advantages
-        if advs.std() > 1e-8:  # FIX: Check for valid std
+        # CRITICAL: For sparse rewards, don't normalize advantages too aggressively
+        if advs.std() > 1e-6:
             advs = (advs - advs.mean()) / (advs.std() + 1e-8)
+        else:
+            # If all advantages are similar, don't normalize
+            advs = advs - advs.mean()
 
-        # FIX: Shuffle indices for better training
+        print(f"Agent {agent_id}: Advantage stats - mean: {advs.mean():.4f}, std: {advs.std():.4f}")
+        print(f"Agent {agent_id}: Return stats - mean: {returns.mean():.4f}, std: {returns.std():.4f}")
+        
+        # Shuffle indices for better training
         indices = torch.randperm(T)
         
         for epoch in range(epochs):
             epoch_policy_loss = 0.0
             epoch_value_loss = 0.0
+            epoch_entropy = 0.0
             num_batches = 0
             
-            # FIX: Use shuffled indices
             for i in range(0, T, batch_size):
                 batch_indices = indices[i:i + batch_size]
                 
-                # FIX: Use indices to get batch
                 obs_batch_list = [obs_buf[agent_id][idx] for idx in batch_indices]
                 obs_batch = batch_obs(obs_batch_list)
                 obs_batch = to_device(obs_batch, device=device)
@@ -649,7 +671,7 @@ def ppo_update(
                 surr2 = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * adv_batch
                 policy_loss = -torch.min(surr1, surr2).mean()
 
-                # FIX: Simplified value loss (remove clipping which can cause issues)
+                # Value loss - critical for sparse rewards
                 ret_batch = returns[batch_indices]
                 v_pred = new_values.squeeze(-1)
                 value_loss = F.mse_loss(v_pred, ret_batch)
@@ -664,12 +686,13 @@ def ppo_update(
 
                 epoch_policy_loss += policy_loss.item()
                 epoch_value_loss += value_loss.item()
+                epoch_entropy += entropy.item()
                 num_batches += 1
 
-            # FIX: KL divergence approximation using log probability ratio
+            # KL divergence check
             if num_batches > 0:
                 with torch.no_grad():
-                    # Sample a batch to estimate KL divergence
+                    # Sample for KL estimation
                     sample_size = min(64, T)
                     sample_indices = torch.randperm(T)[:sample_size]
                     
@@ -682,15 +705,18 @@ def ppo_update(
                     new_logp = new_dist.log_prob(sample_actions)
                     old_logp_sample = old_logps[sample_indices]
                     
-                    # Approximate KL using log probability difference
+                    # Approximate KL
                     logp_diff = new_logp - old_logp_sample
                     approx_kl = ((torch.exp(logp_diff) - 1) - logp_diff).mean()
                     
+                    print(f"[{agent_id}] Epoch {epoch}: Policy Loss: {epoch_policy_loss/num_batches:.4f}, "
+                          f"Value Loss: {epoch_value_loss/num_batches:.4f}, "
+                          f"Entropy: {epoch_entropy/num_batches:.4f}, KL: {approx_kl:.6f}")
+                    
                     if approx_kl > target_kl:
-                        print(f"[{agent_id}] Early stopping at epoch {epoch} due to approx_KL={approx_kl:.5f}")
+                        print(f"[{agent_id}] Early stopping at epoch {epoch} due to KL={approx_kl:.5f}")
                         break
 
-            if num_batches > 0:
                 policy_losses.append(epoch_policy_loss / num_batches)
                 value_losses.append(epoch_value_loss / num_batches)
 

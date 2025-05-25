@@ -521,7 +521,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
             action_buf[agent_id].append(action.item())
             logp_buf[agent_id].append(dist.log_prob(action).detach().cpu())
             value_buf[agent_id].append(value.squeeze(-1).detach().cpu())
-            old_logits_buf[agent_id].append(logits.detach())
+            old_logits_buf[agent_id].append(logits.detach().cpu())  # FIX: Move to CPU
 
             actions[agent_id] = action.item()
 
@@ -580,20 +580,37 @@ def ppo_update(
     policy_losses, value_losses = [], []
 
     for agent_id in obs_buf.keys():
+        # Skip agents with no data
+        if len(reward_buf[agent_id]) == 0:
+            continue
+            
         done_buf = [t or tr for t, tr in zip(terminated_buf[agent_id], truncated_buf[agent_id])]
         T = len(reward_buf[agent_id])
 
-        # GAE and returns
+        # GAE and returns - FIX: Handle bootstrap value properly
         returns, advs = [], []
         gae = 0.0
-        last_value = 0.0
+        
+        # FIX: Get bootstrap value from final observation if not terminated
+        if T > 0 and not done_buf[-1]:
+            with torch.no_grad():
+                final_obs = to_device(obs_buf[agent_id][-1], device=device)
+                _, last_value = model(final_obs.unsqueeze(0) if final_obs.dim() == 1 else final_obs)
+                last_value = last_value.squeeze(-1).item()
+        else:
+            last_value = 0.0
+        
         for t in reversed(range(T)):
+            if t == T - 1:
+                next_value = last_value
+            else:
+                next_value = value_buf[agent_id][t + 1]
+                
             mask = 1.0 - float(done_buf[t])
-            delta = reward_buf[agent_id][t] + gamma * last_value * mask - value_buf[agent_id][t]
+            delta = reward_buf[agent_id][t] + gamma * next_value * mask - value_buf[agent_id][t]
             gae = delta + gamma * lam * mask * gae
             advs.insert(0, gae)
             returns.insert(0, gae + value_buf[agent_id][t])
-            last_value = value_buf[agent_id][t]
 
         # Convert to tensors
         advs = torch.tensor(advs, dtype=torch.float32, device=device)
@@ -602,39 +619,45 @@ def ppo_update(
         old_logps = torch.stack(logp_buf[agent_id]).to(device)
 
         # Normalize advantages
-        advs = (advs - advs.mean()) / (advs.std() + 1e-8)
-        # Optional: normalize returns
-        returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+        if advs.std() > 1e-8:  # FIX: Check for valid std
+            advs = (advs - advs.mean()) / (advs.std() + 1e-8)
 
+        # FIX: Shuffle indices for better training
+        indices = torch.randperm(T)
+        
         for epoch in range(epochs):
+            epoch_policy_loss = 0.0
+            epoch_value_loss = 0.0
+            num_batches = 0
+            
+            # FIX: Use shuffled indices
             for i in range(0, T, batch_size):
-                obs_batch = batch_obs(obs_buf[agent_id][i : i + batch_size])
+                batch_indices = indices[i:i + batch_size]
+                
+                # FIX: Use indices to get batch
+                obs_batch_list = [obs_buf[agent_id][idx] for idx in batch_indices]
+                obs_batch = batch_obs(obs_batch_list)
                 obs_batch = to_device(obs_batch, device=device)
 
                 logits, new_values = model(obs_batch)
                 dist = Categorical(logits=logits)
                 entropy = dist.entropy().mean()
 
-                actions = torch.tensor(action_buf[agent_id][i : i + batch_size], device=device)
+                actions = torch.tensor([action_buf[agent_id][idx] for idx in batch_indices], device=device)
                 new_logp = dist.log_prob(actions)
-                old_logp = old_logps[i : i + batch_size]
+                old_logp = old_logps[batch_indices]
 
                 # Policy loss with clipping
-                adv_batch = advs[i : i + batch_size]
+                adv_batch = advs[batch_indices]
                 ratio = torch.exp(new_logp - old_logp)
                 surr1 = ratio * adv_batch
                 surr2 = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * adv_batch
                 policy_loss = -torch.min(surr1, surr2).mean()
 
-                # Value loss with clipping
-                ret_batch = returns[i : i + batch_size]
+                # FIX: Simplified value loss (remove clipping which can cause issues)
+                ret_batch = returns[batch_indices]
                 v_pred = new_values.squeeze(-1)
-                old_value = old_values[i : i + batch_size]
-                v_pred_clipped = old_value + (v_pred - old_value).clamp(-clip_ratio, clip_ratio)
-
-                value_loss_unclipped = (v_pred - ret_batch).pow(2)
-                value_loss_clipped = (v_pred_clipped - ret_batch).pow(2)
-                value_loss = torch.max(value_loss_unclipped, value_loss_clipped).mean()
+                value_loss = F.mse_loss(v_pred, ret_batch)
 
                 # Total loss
                 loss = policy_loss + vf_coef * value_loss - entropy_coef * entropy
@@ -644,15 +667,32 @@ def ppo_update(
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
                 optimizer.step()
 
-                # KL divergence monitoring
-                with torch.no_grad():
-                    ref_dist = Categorical(logits=logits.detach())
-                    kl = torch.distributions.kl.kl_divergence(ref_dist, dist).mean()
-                    if kl > target_kl:
-                        print(f"[{agent_id}] Early stopping at epoch {epoch} due to KL={kl:.5f}")
-                        break
+                epoch_policy_loss += policy_loss.item()
+                epoch_value_loss += value_loss.item()
+                num_batches += 1
 
-                policy_losses.append(policy_loss.item())
-                value_losses.append(value_loss.item())
+            # FIX: KL divergence check using old logits
+            with torch.no_grad():
+                # Get current policy on full dataset
+                all_obs = batch_obs(obs_buf[agent_id])
+                all_obs = to_device(all_obs, device=device)
+                current_logits, _ = model(all_obs)
+                
+                # Use stored old logits for KL computation
+                old_logits_tensor = torch.stack(old_logits_buf[agent_id]).to(device)
+                
+                old_dist = Categorical(logits=old_logits_tensor)
+                new_dist = Categorical(logits=current_logits)
+                kl = torch.distributions.kl.kl_divergence(old_dist, new_dist).mean()
+                
+                if kl > target_kl:
+                    print(f"[{agent_id}] Early stopping at epoch {epoch} due to KL={kl:.5f}")
+                    break
 
+            if num_batches > 0:
+                policy_losses.append(epoch_policy_loss / num_batches)
+                value_losses.append(epoch_value_loss / num_batches)
+
+    if len(policy_losses) == 0:
+        return 0.0, 0.0
     return np.mean(policy_losses), np.mean(value_losses)

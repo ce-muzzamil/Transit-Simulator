@@ -572,6 +572,8 @@ def ppo_update(
             advs = (advs - advs.mean()) / (advs.std() + 1e-8)
         else:
             advs = advs - advs.mean()
+        
+        print(f"[{agent_id}] adv mean: {advs.mean():.4f}, std: {advs.std():.4f}")
 
         indices = torch.randperm(T)
 
@@ -604,6 +606,7 @@ def ppo_update(
 
                 ret_batch = returns[batch_indices]
                 v_pred = new_values.squeeze(-1)
+                print(f"[{agent_id}] ret_batch[:5]: {ret_batch[:5]}", f"[{agent_id}] v_pred[:5]: {v_pred[:5]}")
                 value_loss = F.mse_loss(v_pred, ret_batch)
 
                 # ---------------- Actor Update ----------------

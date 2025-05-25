@@ -348,14 +348,14 @@ class TransitNetworkEnv:
         if self.current_day >= self.analysis_period_days:
             for agent_id in self.possible_agents:
                 truncated[agent_id] = True
-                reward[agent_id] = 1
+                reward[agent_id] = 1080
 
         info = {**reward_info}
 
         for agent_id in self.possible_agents:
             if self.avg_waiting_time[agent_id] > 60:
                 terminated[agent_id] = True
-                reward[agent_id] = -1000
+                reward[agent_id] = -10000
 
         obs: dict = self.update_graph()
         subgraphs = self.get_sub_graphs(obs)
@@ -452,7 +452,7 @@ class TransitNetworkEnv:
             self.avg_waiting_time[self.possible_agents[i]] = avg_waiting_time
 
             if action == 1:
-                expence_of_bus_journey = 0.05
+                expence_of_bus_journey = 1
             else:
                 expence_of_bus_journey = 0
 

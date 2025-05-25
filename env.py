@@ -348,14 +348,14 @@ class TransitNetworkEnv:
         if self.current_day >= self.analysis_period_days:
             for agent_id in self.possible_agents:
                 truncated[agent_id] = True
-                reward[agent_id] = 1080
+                reward[agent_id] = 1000
 
         info = {**reward_info}
 
         for agent_id in self.possible_agents:
             if self.avg_waiting_time[agent_id] > 60:
                 terminated[agent_id] = True
-                reward[agent_id] = -10000
+                reward[agent_id] = -1000
 
         obs: dict = self.update_graph()
         subgraphs = self.get_sub_graphs(obs)
@@ -443,8 +443,7 @@ class TransitNetworkEnv:
                 avg_stranding_count = 0  # counts
 
             reward_2 = 0
-            if avg_waiting_time > 15:
-                reward_2 += -(avg_waiting_time // 15)
+            reward_2 += -(avg_waiting_time // 5)
 
             if avg_stranding_count > 0 and action == 0:
                 reward_2 += -2
@@ -458,8 +457,13 @@ class TransitNetworkEnv:
 
             reward_3 = -expence_of_bus_journey
 
-            # reward = reward_2 + reward_3
+
             reward = reward_3
+
+            buses = [bus for bus in self.transit_system.retired_buses if bus.service_route == route_id and bus.reversed == is_reversed]
+            reward += sum([bus.num_passengers_served > 0 for bus in buses])
+            for bus in self.transit_system.retired_buses:
+                self.transit_system.retired_buses.remove(bus)
 
             reward_info = {
                 "reward_type_2": reward_2,

@@ -367,7 +367,6 @@ class FeatureExtractor(nn.Module):
             f"edge_attr": observations[f"edge_attr_route"],
         }
 
-
         # topology_vector = self.topology(observations)  # N,L,E
         routes_vector = self.route(route)  # (N, L, E)
 
@@ -379,54 +378,6 @@ class FeatureExtractor(nn.Module):
 
         out = torch.mean(routes_vector, dim=1)  # N,E
         return out
-
-# class Model(nn.Module):
-#     def __init__(
-#         self,
-#         observation_space,
-#         action_space,
-#         gnn_hidden_dim=128,
-#         gnn_num_heads=4,
-#         embed_size=256,
-#         transformer_num_heads=4,
-#         num_encoder_layers=6,
-#         num_decoder_layers=6,
-#         dropout_rate=0.0,
-#         *args,
-#         **kwargs,
-#     ):
-#         super().__init__(*args, **kwargs)
-
-#         self.num_actions = action_space.n
-
-#         self.feature_extractor = FeatureExtractor(
-#             observation_space=observation_space,
-#             gnn_hidden_dim=gnn_hidden_dim,
-#             gnn_num_heads=gnn_num_heads,
-#             embed_size=embed_size,
-#             transformer_num_heads=transformer_num_heads,
-#             num_encoder_layers=num_encoder_layers,
-#             num_decoder_layers=num_decoder_layers,
-#             dropout_rate=dropout_rate,
-#         )
-
-#         self.actor = nn.Sequential(
-#             nn.Linear(embed_size, embed_size),
-#             nn.ReLU(),
-#             nn.Linear(embed_size, self.num_actions),
-#         )
-
-#         self.critic = nn.Sequential(
-#             nn.Linear(embed_size, embed_size),
-#             nn.ReLU(),
-#             nn.Linear(embed_size, 1),
-#         )
-
-#     def forward(self, x):
-#         embed = self.feature_extractor(x)
-#         logits = self.actor(embed).squeeze(-1)
-#         value = self.critic(embed).squeeze(-1)
-#         return logits, value
 
 class Model(nn.Module):
     def __init__(

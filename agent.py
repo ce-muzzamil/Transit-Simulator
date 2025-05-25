@@ -645,9 +645,9 @@ def ppo_update(
                     #       f"H: {epoch_entropy / num_batches:.6f}, "
                     #       f"KL: {approx_kl:.6f}")
 
-                    # if approx_kl > target_kl:
-                    #     print(f"[{agent_id}] Early stopping at epoch {epoch} due to KL={approx_kl:.5f}")
-                    #     break
+                    if approx_kl > target_kl:
+                        # print(f"[{agent_id}] Early stopping at epoch {epoch} due to KL={approx_kl:.5f}")
+                        break
 
             policy_losses.append(epoch_policy_loss / num_batches)
             value_losses.append(epoch_value_loss / num_batches)

@@ -461,7 +461,7 @@ class TransitNetworkEnv:
             reward = reward_3
 
             buses = [bus for bus in self.transit_system.retired_buses if bus.service_route == route_id and bus.reversed == is_reversed]
-            reward += int(sum([bus.num_passengers_served > 0 for bus in buses]) > 0)
+            reward += sum([bus.num_passengers_served > 0 for bus in buses])
             for bus in self.transit_system.retired_buses:
                 self.transit_system.retired_buses.remove(bus)
 

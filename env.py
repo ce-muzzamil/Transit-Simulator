@@ -348,7 +348,7 @@ class TransitNetworkEnv:
         if self.current_day >= self.analysis_period_days:
             for agent_id in self.possible_agents:
                 truncated[agent_id] = True
-                reward[agent_id] = 1000
+                reward[agent_id] = 1
 
         info = {**reward_info}
 
@@ -461,7 +461,7 @@ class TransitNetworkEnv:
             reward = reward_3
 
             buses = [bus for bus in self.transit_system.retired_buses if bus.service_route == route_id and bus.reversed == is_reversed]
-            reward += sum([bus.num_passengers_served > 0 for bus in buses])
+            reward += int(sum([bus.num_passengers_served > 0 for bus in buses]) > 0)
             for bus in self.transit_system.retired_buses:
                 self.transit_system.retired_buses.remove(bus)
 

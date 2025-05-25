@@ -539,11 +539,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                 if terminated[agent_id] or truncated[agent_id]:
                     if agent_id not in killed_agents:
                         killed_agents.add(agent_id)
-                if terminated[agent_id]:
-                        print(f"Agent {agent_id} killed at step {step_count + 1} with final reward: {reward[agent_id]}")
-                elif truncated[agent_id]:
-                        print(f"Agent {agent_id} completed at step {step_count + 1} with final reward: {reward[agent_id]}")
-
+                
         info_buf.append(info)
         
         obs = next_obs

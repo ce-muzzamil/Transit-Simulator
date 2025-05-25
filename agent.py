@@ -446,18 +446,7 @@ class Model(nn.Module):
 
         self.num_actions = action_space.n
 
-        self.feature_extractor_actor = FeatureExtractor(
-            observation_space=observation_space,
-            gnn_hidden_dim=gnn_hidden_dim,
-            gnn_num_heads=gnn_num_heads,
-            embed_size=embed_size,
-            transformer_num_heads=transformer_num_heads,
-            num_encoder_layers=num_encoder_layers,
-            num_decoder_layers=num_decoder_layers,
-            dropout_rate=dropout_rate,
-        )
-
-        self.feature_extractor_critic = FeatureExtractor(
+        self.feature_extractor = FeatureExtractor(
             observation_space=observation_space,
             gnn_hidden_dim=gnn_hidden_dim,
             gnn_num_heads=gnn_num_heads,
@@ -482,10 +471,9 @@ class Model(nn.Module):
 
     def forward(self, x):
         embed_actor = self.feature_extractor_actor(x)
-        embed_critic = self.feature_extractor_critic(x)
 
         logits = self.actor(embed_actor).squeeze(-1)
-        value = self.critic(embed_critic).squeeze(-1)
+        value = self.critic(embed_actor.clone().detach()).squeeze(-1)
         return logits, value
 
 

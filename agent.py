@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import GATv2Conv
 from torch.distributions import Categorical
 from copy import deepcopy
+import itertools
 
 
 def to_torch(obs_):
@@ -469,9 +470,15 @@ class Model(nn.Module):
             nn.Linear(embed_size, 1),
         )
 
+    
+    def actor_parameters(self):
+        return itertools.chain(self.feature_extractor.parameters(), self.actor.parameters())
+    
+    def critic_parameters(self):
+        return self.critic.parameters()
+    
     def forward(self, x):
         embed = self.feature_extractor(x)
-
         logits = self.actor(embed).squeeze(-1)
         value = self.critic(embed.clone().detach()).squeeze(-1)
         return logits, value
@@ -568,37 +575,28 @@ def ppo_update(
     gamma=0.995,
     lam=0.95,
     clip_ratio=0.2,
-    entropy_coef=0.01,  # Reduced from 0.075 - high entropy prevents learning terminal rewards
-    vf_coef=1.0,  # Increased - value function is critical for sparse rewards
+    entropy_coef=0.01,
+    vf_coef=1.0,
     target_kl=0.015,
     epochs=5,
     batch_size=32,
     device="cpu",
 ):
+    optm_actor, optm_critic = optimizer
     policy_losses, value_losses = [], []
 
     for agent_id in obs_buf.keys():
-        # Skip agents with no data
         if len(reward_buf[agent_id]) == 0:
             continue
-            
+
         done_buf = [t or tr for t, tr in zip(terminated_buf[agent_id], truncated_buf[agent_id])]
         T = len(reward_buf[agent_id])
-        
-        print(f"Agent {agent_id}: {T} steps, final done: {done_buf[-1] if T > 0 else 'N/A'}")
-        print(f"Agent {agent_id}: total reward: {sum(reward_buf[agent_id]):.2f}")
 
-        # CRITICAL FIX: Bootstrap value calculation for sparse rewards
-        returns, advs = [], []
-        gae = 0.0
-        
-        # For sparse reward environments, bootstrap value is crucial
+        # Bootstrap value
         if T > 0:
             if done_buf[-1]:
-                # Terminal state - no bootstrap needed (value should be 0)
                 last_value = 0.0
             else:
-                # Non-terminal - get value estimate for next state
                 with torch.no_grad():
                     final_obs = to_device(obs_buf[agent_id][-1], device=device)
                     if final_obs.dim() == 1:
@@ -607,51 +605,38 @@ def ppo_update(
                     last_value = last_value_tensor.squeeze(-1).item()
         else:
             last_value = 0.0
-        
-        # GAE calculation - CRITICAL for sparse rewards
+
+        # Compute GAE and returns
+        returns, advs = [], []
+        gae = 0.0
         for t in reversed(range(T)):
-            if t == T - 1:
-                next_value = last_value
-                next_non_terminal = 1.0 - float(done_buf[t])
-            else:
-                next_value = value_buf[agent_id][t + 1]
-                next_non_terminal = 1.0 - float(done_buf[t])
-                
-            # Standard GAE computation
+            next_value = last_value if t == T - 1 else value_buf[agent_id][t + 1]
+            next_non_terminal = 1.0 - float(done_buf[t])
             delta = reward_buf[agent_id][t] + gamma * next_value * next_non_terminal - value_buf[agent_id][t]
             gae = delta + gamma * lam * next_non_terminal * gae
-            
             advs.insert(0, gae)
             returns.insert(0, gae + value_buf[agent_id][t])
 
-        # Convert to tensors
         advs = torch.tensor(advs, dtype=torch.float32, device=device)
         returns = torch.tensor(returns, dtype=torch.float32, device=device)
-        old_values = torch.tensor(value_buf[agent_id], dtype=torch.float32, device=device)
         old_logps = torch.stack(logp_buf[agent_id]).to(device)
 
-        # CRITICAL: For sparse rewards, don't normalize advantages too aggressively
         if advs.std() > 1e-6:
             advs = (advs - advs.mean()) / (advs.std() + 1e-8)
         else:
-            # If all advantages are similar, don't normalize
             advs = advs - advs.mean()
 
-        print(f"Agent {agent_id}: Advantage stats - mean: {advs.mean():.4f}, std: {advs.std():.4f}")
-        print(f"Agent {agent_id}: Return stats - mean: {returns.mean():.4f}, std: {returns.std():.4f}")
-        
-        # Shuffle indices for better training
         indices = torch.randperm(T)
-        
+
         for epoch in range(epochs):
             epoch_policy_loss = 0.0
             epoch_value_loss = 0.0
             epoch_entropy = 0.0
             num_batches = 0
-            
+
             for i in range(0, T, batch_size):
                 batch_indices = indices[i:i + batch_size]
-                
+
                 obs_batch_list = [obs_buf[agent_id][idx] for idx in batch_indices]
                 obs_batch = batch_obs(obs_batch_list)
                 obs_batch = to_device(obs_batch, device=device)
@@ -664,61 +649,61 @@ def ppo_update(
                 new_logp = dist.log_prob(actions)
                 old_logp = old_logps[batch_indices]
 
-                # Policy loss with clipping
                 adv_batch = advs[batch_indices]
                 ratio = torch.exp(new_logp - old_logp)
                 surr1 = ratio * adv_batch
                 surr2 = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * adv_batch
                 policy_loss = -torch.min(surr1, surr2).mean()
 
-                # Value loss - critical for sparse rewards
                 ret_batch = returns[batch_indices]
                 v_pred = new_values.squeeze(-1)
                 value_loss = F.mse_loss(v_pred, ret_batch)
 
-                # Total loss
-                loss = policy_loss + vf_coef * value_loss - entropy_coef * entropy
+                # ---------------- Actor Update ----------------
+                optm_actor.zero_grad()
+                (policy_loss - entropy_coef * entropy).backward(retain_graph=True)
+                torch.nn.utils.clip_grad_norm_(model.actor_parameters(), max_norm=0.5)
+                optm_actor.step()
 
-                optimizer.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
-                optimizer.step()
+                # ---------------- Critic Update ----------------
+                optm_critic.zero_grad()
+                (value_loss * vf_coef).backward()
+                torch.nn.utils.clip_grad_norm_(model.critic_parameters(), max_norm=0.5)
+                optm_critic.step()
 
                 epoch_policy_loss += policy_loss.item()
                 epoch_value_loss += value_loss.item()
                 epoch_entropy += entropy.item()
                 num_batches += 1
 
-            # KL divergence check
+            # ------------- KL Divergence Check -------------
             if num_batches > 0:
                 with torch.no_grad():
-                    # Sample for KL estimation
                     sample_size = min(64, T)
                     sample_indices = torch.randperm(T)[:sample_size]
-                    
                     sample_obs = batch_obs([obs_buf[agent_id][idx] for idx in sample_indices])
                     sample_obs = to_device(sample_obs, device=device)
                     sample_actions = torch.tensor([action_buf[agent_id][idx] for idx in sample_indices], device=device)
-                    
+
                     new_logits, _ = model(sample_obs)
                     new_dist = Categorical(logits=new_logits)
                     new_logp = new_dist.log_prob(sample_actions)
                     old_logp_sample = old_logps[sample_indices]
-                    
-                    # Approximate KL
                     logp_diff = new_logp - old_logp_sample
                     approx_kl = ((torch.exp(logp_diff) - 1) - logp_diff).mean()
-                    
-                    print(f"[{agent_id}] Epoch {epoch}: Policy Loss: {epoch_policy_loss/num_batches:.4f}, "
-                          f"Value Loss: {epoch_value_loss/num_batches:.4f}, "
-                          f"Entropy: {epoch_entropy/num_batches:.4f}, KL: {approx_kl:.6f}")
-                    
+
+                    print(f"[{agent_id}] Epoch {epoch}: "
+                          f"PL: {epoch_policy_loss / num_batches:.6f}, "
+                          f"VL: {epoch_value_loss / num_batches:.6f}, "
+                          f"H: {epoch_entropy / num_batches:.6f}, "
+                          f"KL: {approx_kl:.6f}")
+
                     if approx_kl > target_kl:
                         print(f"[{agent_id}] Early stopping at epoch {epoch} due to KL={approx_kl:.5f}")
                         break
 
-                policy_losses.append(epoch_policy_loss / num_batches)
-                value_losses.append(epoch_value_loss / num_batches)
+            policy_losses.append(epoch_policy_loss / num_batches)
+            value_losses.append(epoch_value_loss / num_batches)
 
     if len(policy_losses) == 0:
         return 0.0, 0.0

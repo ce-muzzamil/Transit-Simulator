@@ -320,7 +320,6 @@ class TransitNetworkEnv:
         these binary variables corresponds to each exit node of the route and the binary variable is to indicate whether to add a bus for that exit node or not.
         Since, a single model is used for all routes, The len of action can be changed from toplogy to toplogy but the mechanism will not fail.
         """
-        print(all_action)
         for (route_id, reversed), agent_id in self.rd_2_agent_id.items():
             if agent_id in self.possible_agents:
                 decision = all_action[agent_id]

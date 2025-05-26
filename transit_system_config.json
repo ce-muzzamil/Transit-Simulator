@@ -5,7 +5,7 @@
     "avg_bus_speed": 10.0,
     "analysis_period_sec": 60,
     "min_num_stops_per_route": 5,
-    "max_num_stops_per_route": 9,
+    "max_num_stops_per_route": 6,
     "min_num_route_per_toplogy": 2,
     "max_num_route_per_toplogy": 3,
     "hours_of_opperation_per_day": 18,

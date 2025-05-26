@@ -565,7 +565,7 @@ def ppo_update(
 
     advs = torch.tensor(advs, dtype=torch.float32, device=device)
     returns = torch.tensor(returns, dtype=torch.float32, device=device)
-    old_logps = torch.stack(logp_buf[agent_id]).to(device)
+    old_logps = torch.stack(logp_buf[agent_id]).to(device).max(dim=-1).values
     
     indices = torch.randperm(T)
 

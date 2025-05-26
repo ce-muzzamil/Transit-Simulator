@@ -475,7 +475,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
             obs_buf[agent_id].append(to_device(detach_grads(obs[agent_id]), device="cpu"))
             action_buf[agent_id].append(action.item())
             # logp_buf[agent_id].append(dist.log_prob(action).detach().cpu())
-            logp_buf[agent_id].append(probs.squeeze(-1).detach().cpu())
+            logp_buf[agent_id].append(torch.log(probs).squeeze(-1).detach().cpu())
             value_buf[agent_id].append(value.squeeze(-1).detach().cpu())
 
             actions[agent_id] = action.item()

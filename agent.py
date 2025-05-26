@@ -547,7 +547,6 @@ def ppo_update(
     clip_ratio=0.2,
     entropy_coef=0.01,
     vf_coef=1.0,
-    target_kl=0.015,
     epochs=5,
     batch_size=32,
     device="cpu",
@@ -626,7 +625,7 @@ def ppo_update(
 
             # ---------------- Actor Update ----------------
             optm_actor.zero_grad()
-            (policy_loss - entropy_coef * entropy).backward(retain_graph=True)
+            (policy_loss - entropy_coef * entropy).backward()
             torch.nn.utils.clip_grad_norm_(model.actor_parameters(), max_norm=0.5)
             optm_actor.step()
 

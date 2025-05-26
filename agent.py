@@ -489,9 +489,9 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
 
             with torch.no_grad():
                 logits, value = model(to_device(obs[agent_id], device=device))
-                probs = F.softmax(logits, dim=-1)
+                # probs = F.softmax(logits, dim=-1)
 
-            dist = Categorical(probs=probs)
+            dist = Categorical(logits=logits)
             action = dist.sample()
 
             obs_buf[agent_id].append(to_device(detach_grads(obs[agent_id]), device="cpu"))

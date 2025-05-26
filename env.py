@@ -322,11 +322,12 @@ class TransitNetworkEnv:
         """
         print(all_action)
         for (route_id, reversed), agent_id in self.rd_2_agent_id.items():
-            decision = all_action[agent_id]
-            if decision == 1:
-                self.transit_system.add_bus_on_route(
-                    route_id, reversed=reversed
-                )
+            if agent_id in self.possible_agents:
+                decision = all_action[agent_id]
+                if decision == 1:
+                    self.transit_system.add_bus_on_route(
+                        route_id, reversed=reversed
+                    )
 
         reward, reward_info = self.reward(all_action)
 
@@ -395,6 +396,8 @@ class TransitNetworkEnv:
         rewards_info = {}
 
         for (route_id, is_reversed), agent_id in self.rd_2_agent_id.items():
+            if agent_id not in self.possible_agents:
+                continue
             action = actions[agent_id]
             num_passengers = []
 

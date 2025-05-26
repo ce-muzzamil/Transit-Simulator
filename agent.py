@@ -576,14 +576,7 @@ def ppo_update(
         advs = torch.tensor(advs, dtype=torch.float32, device=device)
         returns = torch.tensor(returns, dtype=torch.float32, device=device)
         old_logps = torch.stack(logp_buf[agent_id]).to(device)
-
-        # if advs.std() > 1e-6:
-        #     advs = (advs - advs.mean()) / (advs.std() + 1e-8)
-        # else:
-        #     advs = advs - advs.mean()
         
-        print(f"[{agent_id}] adv mean: {advs.mean():.4f}, std: {advs.std():.4f}")
-
         indices = torch.randperm(T)
 
         for epoch in range(epochs):

@@ -6,6 +6,8 @@ from torch_geometric.nn import GATv2Conv
 from torch.distributions import Categorical
 from copy import deepcopy
 import itertools
+from collections import deque, namedtuple
+import random
 
 
 def to_torch(obs_):
@@ -716,8 +718,6 @@ class Model(nn.Module):
         logits = self.actor(embed).squeeze(-1)
         return logits
     
-    from collections import deque, namedtuple
-import random
 
 Transition = namedtuple("Transition", ["obs", "action", "reward", "next_obs", "done"])
 

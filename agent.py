@@ -379,6 +379,297 @@ class FeatureExtractor(nn.Module):
         out = torch.mean(routes_vector, dim=1)  # N,E
         return out
 
+# class Model(nn.Module):
+#     def __init__(
+#         self,
+#         observation_space,
+#         action_space,
+#         gnn_hidden_dim=128,
+#         gnn_num_heads=4,
+#         embed_size=256,
+#         transformer_num_heads=4,
+#         num_encoder_layers=6,
+#         num_decoder_layers=6,
+#         dropout_rate=0.0,
+#         *args,
+#         **kwargs,
+#     ):
+#         super().__init__(*args, **kwargs)
+
+#         self.num_actions = action_space.n
+
+#         self.feature_extractor = FeatureExtractor(
+#             observation_space=observation_space,
+#             gnn_hidden_dim=gnn_hidden_dim,
+#             gnn_num_heads=gnn_num_heads,
+#             embed_size=embed_size,
+#             transformer_num_heads=transformer_num_heads,
+#             num_encoder_layers=num_encoder_layers,
+#             num_decoder_layers=num_decoder_layers,
+#             dropout_rate=dropout_rate,
+#         )
+
+#         self.actor = nn.Sequential(
+#             nn.Linear(embed_size, embed_size),
+#             nn.ReLU(),
+#             nn.Linear(embed_size, embed_size),
+#             nn.ReLU(),
+#             nn.Linear(embed_size, self.num_actions),
+#         )
+
+#         self.critic = nn.Sequential(
+#             nn.Linear(embed_size, embed_size),
+#             nn.ReLU(),
+#             nn.Linear(embed_size, embed_size),
+#             nn.ReLU(),
+#             nn.Linear(embed_size, embed_size),
+#             nn.ReLU(),
+#             nn.Linear(embed_size, embed_size),
+#             nn.ReLU(),
+#             nn.Linear(embed_size, 1),
+#         )
+
+    
+#     def actor_parameters(self):
+#         return itertools.chain(self.feature_extractor.parameters(), self.actor.parameters())
+    
+#     def critic_parameters(self):
+#         return self.critic.parameters()
+    
+#     def forward(self, x):
+#         embed = self.feature_extractor(x)
+#         logits = self.actor(embed).squeeze(-1)
+#         value = self.critic(embed.clone().detach()).squeeze(-1)
+#         return logits, value
+
+# def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True):
+#     obs, _ = env.reset(hard_reset=hard_reset)
+#     (
+#         obs_buf,
+#         action_buf,
+#         reward_buf,
+#         terminated_buf,
+#         truncated_buf,
+#         info_buf,
+#         logp_buf,
+#         value_buf,
+#     ) = (
+#         {agent_id: [] for agent_id in env.possible_agents},
+#         {agent_id: [] for agent_id in env.possible_agents},
+#         {agent_id: [] for agent_id in env.possible_agents},
+#         {agent_id: [] for agent_id in env.possible_agents},
+#         {agent_id: [] for agent_id in env.possible_agents},
+#         [],
+#         {agent_id: [] for agent_id in env.possible_agents},
+#         {agent_id: [] for agent_id in env.possible_agents},
+#     )
+
+#     killed_agents = set()
+#     for step_count in range(rollout_len):
+#         obs = to_torch(obs)
+
+#         actions = {}
+#         for index, agent_id in enumerate(env.possible_agents):
+#             if agent_id in killed_agents:
+#                 actions[agent_id] = 0
+#                 continue
+
+#             with torch.no_grad():
+#                 logits, value = model(to_device(obs[agent_id], device=device))
+#                 probs = F.softmax(logits, dim=-1)
+
+#             dist = Categorical(probs=probs)
+#             action = dist.sample()
+
+#             obs_buf[agent_id].append(to_device(detach_grads(obs[agent_id]), device="cpu"))
+#             action_buf[agent_id].append(action.item())
+#             logp_buf[agent_id].append(dist.log_prob(action).detach().cpu())
+#             value_buf[agent_id].append(value.squeeze(-1).detach().cpu())
+
+#             actions[agent_id] = action.item()
+
+#         next_obs, reward, terminated, truncated, info = env.step(actions)
+#         for agent_id in env.possible_agents:
+#             if agent_id not in killed_agents:                
+#                 reward_buf[agent_id].append(torch.tensor(reward[agent_id], dtype=torch.float32))
+#                 terminated_buf[agent_id].append(terminated[agent_id])
+#                 truncated_buf[agent_id].append(truncated[agent_id])
+
+#                 if terminated[agent_id] or truncated[agent_id]:
+#                     if agent_id not in killed_agents:
+#                         killed_agents.add(agent_id)
+                
+#         info_buf.append(info)
+        
+#         obs = next_obs
+#         if len(killed_agents) == len(env.possible_agents):
+#             break
+
+#     return (
+#         obs_buf,
+#         action_buf,
+#         reward_buf,
+#         terminated_buf,
+#         truncated_buf,
+#         info_buf,
+#         logp_buf,
+#         value_buf,
+#     )
+
+
+# def ppo_update(
+#     model,
+#     optimizer,
+#     obs_buf,
+#     action_buf,
+#     reward_buf,
+#     terminated_buf,
+#     truncated_buf,
+#     logp_buf,
+#     value_buf,
+#     gamma=0.995,
+#     lam=0.95,
+#     clip_ratio=0.2,
+#     entropy_coef=0.01,
+#     vf_coef=1.0,
+#     target_kl=0.015,
+#     epochs=5,
+#     batch_size=32,
+#     device="cpu",
+# ):
+#     optm_actor, optm_critic = optimizer
+#     policy_losses, value_losses = [], []
+
+#     for agent_id in obs_buf.keys():
+#         if len(reward_buf[agent_id]) == 0:
+#             continue
+
+#         done_buf = [t or tr for t, tr in zip(terminated_buf[agent_id], truncated_buf[agent_id])]
+#         T = len(reward_buf[agent_id])
+
+#         # Bootstrap value
+#         if T > 0:
+#             if done_buf[-1]:
+#                 last_value = 0.0
+#             else:
+#                 with torch.no_grad():
+#                     final_obs = to_device(obs_buf[agent_id][-1], device=device)
+#                     if final_obs.dim() == 1:
+#                         final_obs = final_obs.unsqueeze(0)
+#                     _, last_value_tensor = model(final_obs)
+#                     last_value = last_value_tensor.squeeze(-1).item()
+#         else:
+#             last_value = 0.0
+
+#         # Compute GAE and returns
+#         returns, advs = [], []
+#         gae = 0.0
+#         for t in reversed(range(T)):
+#             next_value = last_value if t == T - 1 else value_buf[agent_id][t + 1]
+#             next_non_terminal = 1.0 - float(done_buf[t])
+#             delta = reward_buf[agent_id][t] + gamma * next_value * next_non_terminal - value_buf[agent_id][t]
+#             gae = delta + gamma * lam * next_non_terminal * gae
+#             advs.insert(0, gae)
+#             returns.insert(0, gae + value_buf[agent_id][t])
+
+#         advs = torch.tensor(advs, dtype=torch.float32, device=device)
+#         returns = torch.tensor(returns, dtype=torch.float32, device=device)
+#         old_logps = torch.stack(logp_buf[agent_id]).to(device)
+
+#         if advs.std() > 1e-6:
+#             advs = (advs - advs.mean()) / (advs.std() + 1e-8)
+#         else:
+#             advs = advs - advs.mean()
+        
+#         print(f"[{agent_id}] adv mean: {advs.mean():.4f}, std: {advs.std():.4f}")
+
+#         indices = torch.randperm(T)
+
+#         for epoch in range(epochs):
+#             epoch_policy_loss = 0.0
+#             epoch_value_loss = 0.0
+#             epoch_entropy = 0.0
+#             num_batches = 0
+
+#             for i in range(0, T, batch_size):
+#                 batch_indices = indices[i:i + batch_size]
+
+#                 obs_batch_list = [obs_buf[agent_id][idx] for idx in batch_indices]
+#                 obs_batch = batch_obs(obs_batch_list)
+#                 obs_batch = to_device(obs_batch, device=device)
+
+#                 logits, new_values = model(obs_batch)
+#                 dist = Categorical(logits=logits)
+#                 entropy = dist.entropy().mean()
+
+#                 actions = torch.tensor([action_buf[agent_id][idx] for idx in batch_indices], device=device)
+#                 new_logp = dist.log_prob(actions)
+#                 old_logp = old_logps[batch_indices]
+
+#                 adv_batch = advs[batch_indices]
+#                 ratio = torch.exp(new_logp - old_logp)
+#                 surr1 = ratio * adv_batch
+#                 surr2 = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * adv_batch
+#                 policy_loss = -torch.min(surr1, surr2).mean()
+
+#                 ret_batch = returns[batch_indices]
+#                 v_pred = new_values.squeeze(-1)
+#                 ret_batch = (ret_batch - ret_batch.mean()) / (ret_batch.std() + 1e-8)
+#                 print(f"[{agent_id}] ret_batch[:5]: {ret_batch[:5]}", f"[{agent_id}] v_pred[:5]: {v_pred[:5]}")
+#                 value_loss = F.mse_loss(v_pred, ret_batch)
+
+#                 # ---------------- Actor Update ----------------
+#                 optm_actor.zero_grad()
+#                 (policy_loss - entropy_coef * entropy).backward(retain_graph=True)
+#                 torch.nn.utils.clip_grad_norm_(model.actor_parameters(), max_norm=0.5)
+#                 optm_actor.step()
+
+#                 # ---------------- Critic Update ----------------
+#                 optm_critic.zero_grad()
+#                 (value_loss * vf_coef).backward()
+#                 torch.nn.utils.clip_grad_norm_(model.critic_parameters(), max_norm=0.5)
+#                 optm_critic.step()
+
+#                 epoch_policy_loss += policy_loss.item()
+#                 epoch_value_loss += value_loss.item()
+#                 epoch_entropy += entropy.item()
+#                 num_batches += 1
+
+#             # ------------- KL Divergence Check -------------
+#             if num_batches > 0:
+#                 with torch.no_grad():
+#                     sample_size = min(64, T)
+#                     sample_indices = torch.randperm(T)[:sample_size]
+#                     sample_obs = batch_obs([obs_buf[agent_id][idx] for idx in sample_indices])
+#                     sample_obs = to_device(sample_obs, device=device)
+#                     sample_actions = torch.tensor([action_buf[agent_id][idx] for idx in sample_indices], device=device)
+
+#                     new_logits, _ = model(sample_obs)
+#                     new_dist = Categorical(logits=new_logits)
+#                     new_logp = new_dist.log_prob(sample_actions)
+#                     old_logp_sample = old_logps[sample_indices]
+#                     logp_diff = new_logp - old_logp_sample
+#                     approx_kl = ((torch.exp(logp_diff) - 1) - logp_diff).mean()
+
+#                     # print(f"[{agent_id}] Epoch {epoch}: "
+#                     #       f"PL: {epoch_policy_loss / num_batches:.6f}, "
+#                     #       f"VL: {epoch_value_loss / num_batches:.6f}, "
+#                     #       f"H: {epoch_entropy / num_batches:.6f}, "
+#                     #       f"KL: {approx_kl:.6f}")
+
+#                     if approx_kl > target_kl:
+#                         # print(f"[{agent_id}] Early stopping at epoch {epoch} due to KL={approx_kl:.5f}")
+#                         break
+
+#             policy_losses.append(epoch_policy_loss / num_batches)
+#             value_losses.append(epoch_value_loss / num_batches)
+
+#     if len(policy_losses) == 0:
+#         return 0.0, 0.0
+#     return np.mean(policy_losses), np.mean(value_losses)
+
+
+
 class Model(nn.Module):
     def __init__(
         self,
@@ -417,253 +708,103 @@ class Model(nn.Module):
             nn.Linear(embed_size, self.num_actions),
         )
 
-        self.critic = nn.Sequential(
-            nn.Linear(embed_size, embed_size),
-            nn.ReLU(),
-            nn.Linear(embed_size, embed_size),
-            nn.ReLU(),
-            nn.Linear(embed_size, embed_size),
-            nn.ReLU(),
-            nn.Linear(embed_size, embed_size),
-            nn.ReLU(),
-            nn.Linear(embed_size, 1),
-        )
-
-    
     def actor_parameters(self):
         return itertools.chain(self.feature_extractor.parameters(), self.actor.parameters())
-    
-    def critic_parameters(self):
-        return self.critic.parameters()
     
     def forward(self, x):
         embed = self.feature_extractor(x)
         logits = self.actor(embed).squeeze(-1)
-        value = self.critic(embed.clone().detach()).squeeze(-1)
-        return logits, value
+        return logits
+    
+    from collections import deque, namedtuple
+import random
 
-def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True):
-    obs, _ = env.reset(hard_reset=hard_reset)
-    (
-        obs_buf,
-        action_buf,
-        reward_buf,
-        terminated_buf,
-        truncated_buf,
-        info_buf,
-        logp_buf,
-        value_buf,
-    ) = (
-        {agent_id: [] for agent_id in env.possible_agents},
-        {agent_id: [] for agent_id in env.possible_agents},
-        {agent_id: [] for agent_id in env.possible_agents},
-        {agent_id: [] for agent_id in env.possible_agents},
-        {agent_id: [] for agent_id in env.possible_agents},
-        [],
-        {agent_id: [] for agent_id in env.possible_agents},
-        {agent_id: [] for agent_id in env.possible_agents},
-    )
+Transition = namedtuple("Transition", ["obs", "action", "reward", "next_obs", "done"])
 
+class ReplayBuffer:
+    def __init__(self, capacity=100_000):
+        self.buffer = deque(maxlen=capacity)
+
+    def push(self, *args):
+        self.buffer.append(Transition(*args))
+
+    def sample(self, batch_size):
+        batch = random.sample(self.buffer, batch_size)
+        return Transition(*zip(*batch))
+
+    def __len__(self):
+        return len(self.buffer)
+    
+
+def collect_experience(env, model, buffer, epsilon=0.1, device="cpu", rollout_len=1080):
+    obs, _ = env.reset()
     killed_agents = set()
-    for step_count in range(rollout_len):
-        obs = to_torch(obs)
 
+    for _ in range(rollout_len):
+        obs_tensor = {aid: to_device(to_torch(obs[aid]), device) for aid in env.possible_agents}
         actions = {}
-        for index, agent_id in enumerate(env.possible_agents):
-            if agent_id in killed_agents:
-                actions[agent_id] = 0
+
+        for aid in env.possible_agents:
+            if aid in killed_agents:
+                actions[aid] = 0
                 continue
 
-            with torch.no_grad():
-                logits, value = model(to_device(obs[agent_id], device=device))
-                probs = F.softmax(logits, dim=-1)
+            if random.random() < epsilon:
+                actions[aid] = random.randint(0, model.q_net[-1].out_features - 1)
+            else:
+                with torch.no_grad():
+                    q_values = model(obs_tensor[aid])
+                    actions[aid] = q_values.argmax().item()
 
-            dist = Categorical(probs=probs)
-            action = dist.sample()
+        next_obs, reward, terminated, truncated, _ = env.step(actions)
 
-            obs_buf[agent_id].append(to_device(detach_grads(obs[agent_id]), device="cpu"))
-            action_buf[agent_id].append(action.item())
-            logp_buf[agent_id].append(dist.log_prob(action).detach().cpu())
-            value_buf[agent_id].append(value.squeeze(-1).detach().cpu())
+        for aid in env.possible_agents:
+            if aid not in killed_agents:
+                buffer.push(
+                    obs[aid],
+                    actions[aid],
+                    reward[aid],
+                    next_obs[aid],
+                    terminated[aid] or truncated[aid],
+                )
+                if terminated[aid] or truncated[aid]:
+                    killed_agents.add(aid)
 
-            actions[agent_id] = action.item()
-
-        next_obs, reward, terminated, truncated, info = env.step(actions)
-        for agent_id in env.possible_agents:
-            if agent_id not in killed_agents:                
-                reward_buf[agent_id].append(torch.tensor(reward[agent_id], dtype=torch.float32))
-                terminated_buf[agent_id].append(terminated[agent_id])
-                truncated_buf[agent_id].append(truncated[agent_id])
-
-                if terminated[agent_id] or truncated[agent_id]:
-                    if agent_id not in killed_agents:
-                        killed_agents.add(agent_id)
-                
-        info_buf.append(info)
-        
         obs = next_obs
         if len(killed_agents) == len(env.possible_agents):
             break
 
-    return (
-        obs_buf,
-        action_buf,
-        reward_buf,
-        terminated_buf,
-        truncated_buf,
-        info_buf,
-        logp_buf,
-        value_buf,
-    )
+
+def ddqn_update(policy_net, target_net, optimizer, buffer, batch_size=64, gamma=0.99, device="cpu"):
+    if len(buffer) < batch_size:
+        return
+
+    batch = buffer.sample(batch_size)
+    obs_batch = torch.stack([to_device(to_torch(o), device) for o in batch.obs])
+    actions = torch.tensor(batch.action, dtype=torch.long, device=device)
+    rewards = torch.tensor(batch.reward, dtype=torch.float32, device=device)
+    next_obs_batch = torch.stack([to_device(to_torch(o), device) for o in batch.next_obs])
+    dones = torch.tensor(batch.done, dtype=torch.float32, device=device)
+
+    q_values = policy_net(obs_batch)
+    q_value = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)
+
+    with torch.no_grad():
+        next_q_values = policy_net(next_obs_batch)
+        next_actions = next_q_values.argmax(1)
+        target_q_values = target_net(next_obs_batch)
+        next_q_value = target_q_values.gather(1, next_actions.unsqueeze(1)).squeeze(1)
+        expected_q_value = rewards + gamma * (1.0 - dones) * next_q_value
+
+    loss = F.mse_loss(q_value, expected_q_value)
+
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+    return loss.item()
 
 
-def ppo_update(
-    model,
-    optimizer,
-    obs_buf,
-    action_buf,
-    reward_buf,
-    terminated_buf,
-    truncated_buf,
-    logp_buf,
-    value_buf,
-    gamma=0.995,
-    lam=0.95,
-    clip_ratio=0.2,
-    entropy_coef=0.01,
-    vf_coef=1.0,
-    target_kl=0.015,
-    epochs=5,
-    batch_size=32,
-    device="cpu",
-):
-    optm_actor, optm_critic = optimizer
-    policy_losses, value_losses = [], []
-
-    for agent_id in obs_buf.keys():
-        if len(reward_buf[agent_id]) == 0:
-            continue
-
-        done_buf = [t or tr for t, tr in zip(terminated_buf[agent_id], truncated_buf[agent_id])]
-        T = len(reward_buf[agent_id])
-
-        # Bootstrap value
-        if T > 0:
-            if done_buf[-1]:
-                last_value = 0.0
-            else:
-                with torch.no_grad():
-                    final_obs = to_device(obs_buf[agent_id][-1], device=device)
-                    if final_obs.dim() == 1:
-                        final_obs = final_obs.unsqueeze(0)
-                    _, last_value_tensor = model(final_obs)
-                    last_value = last_value_tensor.squeeze(-1).item()
-        else:
-            last_value = 0.0
-
-        # Compute GAE and returns
-        returns, advs = [], []
-        gae = 0.0
-        for t in reversed(range(T)):
-            next_value = last_value if t == T - 1 else value_buf[agent_id][t + 1]
-            next_non_terminal = 1.0 - float(done_buf[t])
-            delta = reward_buf[agent_id][t] + gamma * next_value * next_non_terminal - value_buf[agent_id][t]
-            gae = delta + gamma * lam * next_non_terminal * gae
-            advs.insert(0, gae)
-            returns.insert(0, gae + value_buf[agent_id][t])
-
-        advs = torch.tensor(advs, dtype=torch.float32, device=device)
-        returns = torch.tensor(returns, dtype=torch.float32, device=device)
-        old_logps = torch.stack(logp_buf[agent_id]).to(device)
-
-        if advs.std() > 1e-6:
-            advs = (advs - advs.mean()) / (advs.std() + 1e-8)
-        else:
-            advs = advs - advs.mean()
-        
-        print(f"[{agent_id}] adv mean: {advs.mean():.4f}, std: {advs.std():.4f}")
-
-        indices = torch.randperm(T)
-
-        for epoch in range(epochs):
-            epoch_policy_loss = 0.0
-            epoch_value_loss = 0.0
-            epoch_entropy = 0.0
-            num_batches = 0
-
-            for i in range(0, T, batch_size):
-                batch_indices = indices[i:i + batch_size]
-
-                obs_batch_list = [obs_buf[agent_id][idx] for idx in batch_indices]
-                obs_batch = batch_obs(obs_batch_list)
-                obs_batch = to_device(obs_batch, device=device)
-
-                logits, new_values = model(obs_batch)
-                dist = Categorical(logits=logits)
-                entropy = dist.entropy().mean()
-
-                actions = torch.tensor([action_buf[agent_id][idx] for idx in batch_indices], device=device)
-                new_logp = dist.log_prob(actions)
-                old_logp = old_logps[batch_indices]
-
-                adv_batch = advs[batch_indices]
-                ratio = torch.exp(new_logp - old_logp)
-                surr1 = ratio * adv_batch
-                surr2 = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * adv_batch
-                policy_loss = -torch.min(surr1, surr2).mean()
-
-                ret_batch = returns[batch_indices]
-                v_pred = new_values.squeeze(-1)
-                ret_batch = (ret_batch - ret_batch.mean()) / (ret_batch.std() + 1e-8)
-                print(f"[{agent_id}] ret_batch[:5]: {ret_batch[:5]}", f"[{agent_id}] v_pred[:5]: {v_pred[:5]}")
-                value_loss = F.mse_loss(v_pred, ret_batch)
-
-                # ---------------- Actor Update ----------------
-                optm_actor.zero_grad()
-                (policy_loss - entropy_coef * entropy).backward(retain_graph=True)
-                torch.nn.utils.clip_grad_norm_(model.actor_parameters(), max_norm=0.5)
-                optm_actor.step()
-
-                # ---------------- Critic Update ----------------
-                optm_critic.zero_grad()
-                (value_loss * vf_coef).backward()
-                torch.nn.utils.clip_grad_norm_(model.critic_parameters(), max_norm=0.5)
-                optm_critic.step()
-
-                epoch_policy_loss += policy_loss.item()
-                epoch_value_loss += value_loss.item()
-                epoch_entropy += entropy.item()
-                num_batches += 1
-
-            # ------------- KL Divergence Check -------------
-            if num_batches > 0:
-                with torch.no_grad():
-                    sample_size = min(64, T)
-                    sample_indices = torch.randperm(T)[:sample_size]
-                    sample_obs = batch_obs([obs_buf[agent_id][idx] for idx in sample_indices])
-                    sample_obs = to_device(sample_obs, device=device)
-                    sample_actions = torch.tensor([action_buf[agent_id][idx] for idx in sample_indices], device=device)
-
-                    new_logits, _ = model(sample_obs)
-                    new_dist = Categorical(logits=new_logits)
-                    new_logp = new_dist.log_prob(sample_actions)
-                    old_logp_sample = old_logps[sample_indices]
-                    logp_diff = new_logp - old_logp_sample
-                    approx_kl = ((torch.exp(logp_diff) - 1) - logp_diff).mean()
-
-                    # print(f"[{agent_id}] Epoch {epoch}: "
-                    #       f"PL: {epoch_policy_loss / num_batches:.6f}, "
-                    #       f"VL: {epoch_value_loss / num_batches:.6f}, "
-                    #       f"H: {epoch_entropy / num_batches:.6f}, "
-                    #       f"KL: {approx_kl:.6f}")
-
-                    if approx_kl > target_kl:
-                        # print(f"[{agent_id}] Early stopping at epoch {epoch} due to KL={approx_kl:.5f}")
-                        break
-
-            policy_losses.append(epoch_policy_loss / num_batches)
-            value_losses.append(epoch_value_loss / num_batches)
-
-    if len(policy_losses) == 0:
-        return 0.0, 0.0
-    return np.mean(policy_losses), np.mean(value_losses)
+def soft_update(target_net, policy_net, tau=0.005):
+    for target_param, param in zip(target_net.parameters(), policy_net.parameters()):
+        target_param.data.copy_(tau * param.data + (1.0 - tau) * target_param.data)

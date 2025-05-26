@@ -470,7 +470,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
 
             # dist = Categorical(logits=logits)
             # action = dist.sample()
-            action = torch.argmax(probs, axis=-1).item()
+            action = torch.argmax(probs, axis=-1)
 
             obs_buf[agent_id].append(to_device(detach_grads(obs[agent_id]), device="cpu"))
             action_buf[agent_id].append(action.item())

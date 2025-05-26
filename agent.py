@@ -449,8 +449,8 @@ class Model(nn.Module):
         return itertools.chain(self.feature_extractor_b.parameters(), self.critic.parameters()) 
     
     def forward(self, x):
-        embed_a = self.feature_extractor(x)
-        embed_b = self.feature_extractor(x)
+        embed_a = self.feature_extractor_a(x)
+        embed_b = self.feature_extractor_b(x)
         logits = self.actor(embed_a).squeeze(-1)
         value = self.critic(embed_b).squeeze(-1)
         return logits, value

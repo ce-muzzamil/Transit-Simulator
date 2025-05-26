@@ -399,7 +399,18 @@ class Model(nn.Module):
 
         self.num_actions = action_space.n
 
-        self.feature_extractor = FeatureExtractor(
+        self.feature_extractor_a = FeatureExtractor(
+            observation_space=observation_space,
+            gnn_hidden_dim=gnn_hidden_dim,
+            gnn_num_heads=gnn_num_heads,
+            embed_size=embed_size,
+            transformer_num_heads=transformer_num_heads,
+            num_encoder_layers=num_encoder_layers,
+            num_decoder_layers=num_decoder_layers,
+            dropout_rate=dropout_rate,
+        )
+
+        self.feature_extractor_b = FeatureExtractor(
             observation_space=observation_space,
             gnn_hidden_dim=gnn_hidden_dim,
             gnn_num_heads=gnn_num_heads,
@@ -432,15 +443,16 @@ class Model(nn.Module):
 
     
     def actor_parameters(self):
-        return itertools.chain(self.feature_extractor.parameters(), self.actor.parameters())
+        return itertools.chain(self.feature_extractor_a.parameters(), self.actor.parameters())
     
     def critic_parameters(self):
-        return self.critic.parameters()
+        return itertools.chain(self.feature_extractor_b.parameters(), self.critic.parameters()) 
     
     def forward(self, x):
-        embed = self.feature_extractor(x)
-        logits = self.actor(embed).squeeze(-1)
-        value = self.critic(embed.clone().detach()).squeeze(-1)
+        embed_a = self.feature_extractor(x)
+        embed_b = self.feature_extractor(x)
+        logits = self.actor(embed_a).squeeze(-1)
+        value = self.critic(embed_b).squeeze(-1)
         return logits, value
 
 def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True):

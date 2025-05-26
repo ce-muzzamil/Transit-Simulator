@@ -321,10 +321,11 @@ class TransitNetworkEnv:
         Since, a single model is used for all routes, The len of action can be changed from toplogy to toplogy but the mechanism will not fail.
         """
 
-        for i, (agent_id, decision) in enumerate(all_action.items()):
+        for (route_id, reversed), agent_id in self.rd_2_agent_id.items():
+            decision = all_action[agent_id]
             if decision == 1:
                 self.transit_system.add_bus_on_route(
-                    i // 2, reversed=False if i % 2 == 0 else True
+                    route_id, reversed=reversed
                 )
 
         reward, reward_info = self.reward(all_action)
@@ -393,10 +394,8 @@ class TransitNetworkEnv:
         rewards = {}
         rewards_info = {}
 
-        for i, (agent_id, action) in enumerate(actions.items()):
-            route_id = int(i // 2)
-            is_reversed = not (i % 2 == 0)
-
+        for (route_id, is_reversed), agent_id in self.rd_2_agent_id.items():
+            action = actions[agent_id]
             num_passengers = []
 
             for node in self.transit_system.topology.nodes:
@@ -446,7 +445,7 @@ class TransitNetworkEnv:
             if avg_stranding_count > 0 and action == 0:
                 reward_2 += -2
 
-            self.avg_waiting_time[self.possible_agents[i]] = avg_waiting_time
+            self.avg_waiting_time[agent_id] = avg_waiting_time
 
             if action == 1:
                 expence_of_bus_journey = 1

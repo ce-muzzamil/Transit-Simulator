@@ -399,18 +399,7 @@ class Model(nn.Module):
 
         self.num_actions = action_space.n
 
-        self.feature_extractor_a = FeatureExtractor(
-            observation_space=observation_space,
-            gnn_hidden_dim=gnn_hidden_dim,
-            gnn_num_heads=gnn_num_heads,
-            embed_size=embed_size,
-            transformer_num_heads=transformer_num_heads,
-            num_encoder_layers=num_encoder_layers,
-            num_decoder_layers=num_decoder_layers,
-            dropout_rate=dropout_rate,
-        )
-
-        self.feature_extractor_b = FeatureExtractor(
+        self.feature_extractor = FeatureExtractor(
             observation_space=observation_space,
             gnn_hidden_dim=gnn_hidden_dim,
             gnn_num_heads=gnn_num_heads,
@@ -434,25 +423,13 @@ class Model(nn.Module):
             nn.ReLU(),
             nn.Linear(embed_size, embed_size),
             nn.ReLU(),
-            nn.Linear(embed_size, embed_size),
-            nn.ReLU(),
-            nn.Linear(embed_size, embed_size),
-            nn.ReLU(),
             nn.Linear(embed_size, 1),
         )
-
-    
-    def actor_parameters(self):
-        return itertools.chain(self.feature_extractor_a.parameters(), self.actor.parameters())
-    
-    def critic_parameters(self):
-        return itertools.chain(self.feature_extractor_b.parameters(), self.critic.parameters()) 
     
     def forward(self, x):
-        embed_a = self.feature_extractor_a(x)
-        embed_b = self.feature_extractor_b(x)
-        logits = self.actor(embed_a).squeeze(-1)
-        value = self.critic(embed_b).squeeze(-1)
+        embed = self.feature_extractor(x)
+        logits = self.actor(embed).squeeze(-1)
+        value = self.critic(embed).squeeze(-1)
         return logits, value
 
 def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True):
@@ -551,7 +528,6 @@ def ppo_update(
     batch_size=32,
     device="cpu",
 ):
-    optm_actor, optm_critic = optimizer
     policy_losses, value_losses = [], []
 
     # for agent_id in obs_buf.keys():
@@ -623,27 +599,16 @@ def ppo_update(
             ret_batch = (ret_batch - ret_batch.mean()) / (ret_batch.std() + 1e-8)
             value_loss = F.mse_loss(v_pred, ret_batch)
 
-            # ---------------- Actor Update ----------------
-            optm_actor.zero_grad()
-            (policy_loss - entropy_coef * entropy).backward()
-            torch.nn.utils.clip_grad_norm_(model.actor_parameters(), max_norm=0.5)
-            optm_actor.step()
-
-            # ---------------- Critic Update ----------------
-            optm_critic.zero_grad()
-            (value_loss * vf_coef).backward()
-            torch.nn.utils.clip_grad_norm_(model.critic_parameters(), max_norm=0.5)
-            optm_critic.step()
-
-            epoch_policy_loss += policy_loss.item()
+            optimizer.zero_grad()
+            (policy_loss - entropy_coef * entropy + value_loss * vf_coef).backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
+            optimizer.step()
             epoch_value_loss += value_loss.item()
-            epoch_entropy += entropy.item()
+            epoch_policy_loss += policy_loss.item()
             num_batches += 1
 
         policy_losses.append(epoch_policy_loss / num_batches)
         value_losses.append(epoch_value_loss / num_batches)
 
-    if len(policy_losses) == 0:
-        return 0.0, 0.0
     return np.mean(policy_losses), np.mean(value_losses)
 

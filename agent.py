@@ -511,6 +511,8 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                 if terminated[agent_id] or truncated[agent_id]:
                     if agent_id not in killed_agents:
                         killed_agents.add(agent_id)
+                if terminated[agent_id]:
+                    print(f"Agent {agent_id} terminated at step {step_count}.")
                 
         info_buf.append(info)
         

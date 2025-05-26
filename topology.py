@@ -312,14 +312,17 @@ class Topology:
         -------
         traffic volume at all the values of `time`
         """
+
         y = np.zeros(60 * 60 * self.hours_of_opperation_per_day)
-        y[: 2 * 3600] = np.linspace(0, 1, 2 * 3600)
-        y[2 * 3600 : 4 * 3600] = np.linspace(1, 0.5, 2 * 3600)
-        y[4 * 3600 : 8 * 3600] = np.linspace(0.5, 0.75, 4 * 3600)
-        y[8 * 3600 : 10 * 3600] = np.linspace(0.75, 1, 2 * 3600)
-        y[10 * 3600 : 14 * 3600] = np.ones(4 * 3600)
-        y[14 * 3600 : self.hours_of_opperation_per_day * 3600] = np.linspace(
-            1, 0.1, (self.hours_of_opperation_per_day - 14) * 3600
+        self.hours_of_opperation_per_day
+        p = [int(i*self.hours_of_opperation_per_day) for i in [0.15, 0.30, 0.45, 0.60, 0.75]]
+        y[: p[0] * 3600] = np.linspace(0, 1, p[0] * 3600)
+        y[p[0] * 3600 : p[1] * 3600] = np.linspace(1, 0.5, y[p[0] * 3600 : p[1] * 3600].shape[0])
+        y[p[1] * 3600 : p[2] * 3600] = np.linspace(0.5, 0.75, y[p[1] * 3600 : p[2] * 3600].shape[0])
+        y[p[2] * 3600 : p[3] * 3600] = np.linspace(0.75, 1, y[p[2] * 3600 : p[3] * 3600].shape[0])
+        y[p[3] * 3600 : p[4] * 3600] = np.ones(y[p[3] * 3600 : p[4] * 3600].shape[0])
+        y[p[4] * 3600 : self.hours_of_opperation_per_day * 3600] = np.linspace(
+            1, 0.1, y[p[4] * 3600 : self.hours_of_opperation_per_day * 3600].shape[0]
         )
 
         y = pd.Series(y).rolling(3600).mean().values

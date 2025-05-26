@@ -37,7 +37,7 @@ class TransitNetworkEnv:
         self.nodes_in_routes = {}
 
         self.max_routes = max(
-            self.transit_system_config["max_num_route_per_toplogy"], 10
+            self.transit_system_config["max_num_route_per_toplogy"], 4
         )
         self.max_route_nodes = max(
             self.transit_system_config["max_num_stops_per_route"], 10
@@ -128,8 +128,6 @@ class TransitNetworkEnv:
         self.num_nodes = len(self.transit_system.topology.nodes)
         self.num_edges = len(self.transit_system.topology.routes)
         self.num_routes = self.transit_system.topology.num_routes
-
-        self.max_num_buses = 15000000
 
         if self.num_routes == 0:
             return

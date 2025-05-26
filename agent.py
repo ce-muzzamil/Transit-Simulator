@@ -577,10 +577,10 @@ def ppo_update(
         returns = torch.tensor(returns, dtype=torch.float32, device=device)
         old_logps = torch.stack(logp_buf[agent_id]).to(device)
 
-        if advs.std() > 1e-6:
-            advs = (advs - advs.mean()) / (advs.std() + 1e-8)
-        else:
-            advs = advs - advs.mean()
+        # if advs.std() > 1e-6:
+        #     advs = (advs - advs.mean()) / (advs.std() + 1e-8)
+        # else:
+        #     advs = advs - advs.mean()
         
         print(f"[{agent_id}] adv mean: {advs.mean():.4f}, std: {advs.std():.4f}")
 
@@ -616,7 +616,6 @@ def ppo_update(
                 ret_batch = returns[batch_indices]
                 v_pred = new_values.squeeze(-1)
                 ret_batch = (ret_batch - ret_batch.mean()) / (ret_batch.std() + 1e-8)
-                print(f"[{agent_id}] ret_batch[:5]: {ret_batch[:5]}", f"[{agent_id}] v_pred[:5]: {v_pred[:5]}")
                 value_loss = F.mse_loss(v_pred, ret_batch)
 
                 # ---------------- Actor Update ----------------
@@ -651,15 +650,7 @@ def ppo_update(
                     old_logp_sample = old_logps[sample_indices]
                     logp_diff = new_logp - old_logp_sample
                     approx_kl = ((torch.exp(logp_diff) - 1) - logp_diff).mean()
-
-                    # print(f"[{agent_id}] Epoch {epoch}: "
-                    #       f"PL: {epoch_policy_loss / num_batches:.6f}, "
-                    #       f"VL: {epoch_value_loss / num_batches:.6f}, "
-                    #       f"H: {epoch_entropy / num_batches:.6f}, "
-                    #       f"KL: {approx_kl:.6f}")
-
                     if approx_kl > target_kl:
-                        # print(f"[{agent_id}] Early stopping at epoch {epoch} due to KL={approx_kl:.5f}")
                         break
 
             policy_losses.append(epoch_policy_loss / num_batches)

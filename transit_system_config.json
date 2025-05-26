@@ -8,7 +8,7 @@
     "max_num_stops_per_route": 6,
     "min_num_route_per_toplogy": 2,
     "max_num_route_per_toplogy": 3,
-    "hours_of_opperation_per_day": 18,
+    "hours_of_opperation_per_day": 6,
     "mean_population_density": 500.0,
     "std_population_density": 150.0,
     "min_population_density": 250.0,

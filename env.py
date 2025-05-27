@@ -375,6 +375,9 @@ class TransitNetworkEnv:
                 edge_index,
                 edge_attr,
             ) in self.directed_sub_routes.items():
+                print((route_id, is_reversed), (indices,
+                edge_index,
+                edge_attr))
                 sub_data = Data(
                     x=obs["x"][indices],
                     edge_index=edge_index,

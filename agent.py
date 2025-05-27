@@ -399,7 +399,18 @@ class Model(nn.Module):
 
         self.num_actions = action_space.n
 
-        self.feature_extractor = FeatureExtractor(
+        self.feature_extractor_a = FeatureExtractor(
+            observation_space=observation_space,
+            gnn_hidden_dim=gnn_hidden_dim,
+            gnn_num_heads=gnn_num_heads,
+            embed_size=embed_size,
+            transformer_num_heads=transformer_num_heads,
+            num_encoder_layers=num_encoder_layers,
+            num_decoder_layers=num_decoder_layers,
+            dropout_rate=dropout_rate,
+        )
+
+        self.feature_extractor_b = FeatureExtractor(
             observation_space=observation_space,
             gnn_hidden_dim=gnn_hidden_dim,
             gnn_num_heads=gnn_num_heads,
@@ -423,13 +434,25 @@ class Model(nn.Module):
             nn.ReLU(),
             nn.Linear(embed_size, embed_size),
             nn.ReLU(),
+            nn.Linear(embed_size, embed_size),
+            nn.ReLU(),
+            nn.Linear(embed_size, embed_size),
+            nn.ReLU(),
             nn.Linear(embed_size, 1),
         )
+
+    
+    def actor_parameters(self):
+        return itertools.chain(self.feature_extractor_a.parameters(), self.actor.parameters())
+    
+    def critic_parameters(self):
+        return itertools.chain(self.feature_extractor_b.parameters(), self.critic.parameters()) 
     
     def forward(self, x):
-        embed = self.feature_extractor(x)
-        logits = self.actor(embed).squeeze(-1)
-        value = self.critic(embed).squeeze(-1)
+        embed_a = self.feature_extractor_a(x)
+        embed_b = self.feature_extractor_b(x)
+        logits = self.actor(embed_a).squeeze(-1)
+        value = self.critic(embed_b).squeeze(-1)
         return logits, value
 
 def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True):
@@ -466,11 +489,10 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
 
             with torch.no_grad():
                 logits, value = model(to_device(obs[agent_id], device=device))
-                # probs = F.softmax(logits, dim=-1)
+                probs = F.softmax(logits, dim=-1)
 
-            dist = Categorical(logits=logits)
+            dist = Categorical(probs=probs)
             action = dist.sample()
-            # action = torch.argmax(probs, axis=-1)
 
             obs_buf[agent_id].append(to_device(detach_grads(obs[agent_id]), device="cpu"))
             action_buf[agent_id].append(action.item())
@@ -525,91 +547,121 @@ def ppo_update(
     clip_ratio=0.2,
     entropy_coef=0.01,
     vf_coef=1.0,
+    target_kl=0.015,
     epochs=5,
     batch_size=32,
     device="cpu",
 ):
+    optm_actor, optm_critic = optimizer
     policy_losses, value_losses = [], []
 
-    # for agent_id in obs_buf.keys():
-    agent_id = np.random.choice(list(obs_buf.keys()))
+    for agent_id in obs_buf.keys():
 
-    done_buf = [t or tr for t, tr in zip(terminated_buf[agent_id], truncated_buf[agent_id])]
-    T = len(reward_buf[agent_id])
+        done_buf = [t or tr for t, tr in zip(terminated_buf[agent_id], truncated_buf[agent_id])]
+        T = len(reward_buf[agent_id])
 
-    # Bootstrap value
-    if T > 0:
-        if done_buf[-1]:
-            last_value = 0.0
+        # Bootstrap value
+        if T > 0:
+            if done_buf[-1]:
+                last_value = 0.0
+            else:
+                with torch.no_grad():
+                    final_obs = to_device(obs_buf[agent_id][-1], device=device)
+                    if final_obs.dim() == 1:
+                        final_obs = final_obs.unsqueeze(0)
+                    _, last_value_tensor = model(final_obs)
+                    last_value = last_value_tensor.squeeze(-1).item()
         else:
-            with torch.no_grad():
-                final_obs = to_device(obs_buf[agent_id][-1], device=device)
-                if final_obs.dim() == 1:
-                    final_obs = final_obs.unsqueeze(0)
-                _, last_value_tensor = model(final_obs)
-                last_value = last_value_tensor.squeeze(-1).item()
-    else:
-        last_value = 0.0
+            last_value = 0.0
 
-    # Compute GAE and returns
-    returns, advs = [], []
-    gae = 0.0
-    for t in reversed(range(T)):
-        next_value = last_value if t == T - 1 else value_buf[agent_id][t + 1]
-        next_non_terminal = 1.0 - float(done_buf[t])
-        delta = reward_buf[agent_id][t] + gamma * next_value * next_non_terminal - value_buf[agent_id][t]
-        gae = delta + gamma * lam * next_non_terminal * gae
-        advs.insert(0, gae)
-        returns.insert(0, gae + value_buf[agent_id][t])
+        # Compute GAE and returns
+        returns, advs = [], []
+        gae = 0.0
+        for t in reversed(range(T)):
+            next_value = last_value if t == T - 1 else value_buf[agent_id][t + 1]
+            next_non_terminal = 1.0 - float(done_buf[t])
+            delta = reward_buf[agent_id][t] + gamma * next_value * next_non_terminal - value_buf[agent_id][t]
+            gae = delta + gamma * lam * next_non_terminal * gae
+            advs.insert(0, gae)
+            returns.insert(0, gae + value_buf[agent_id][t])
 
-    advs = torch.tensor(advs, dtype=torch.float32, device=device)
-    returns = torch.tensor(returns, dtype=torch.float32, device=device)
-    old_logps = torch.stack(logp_buf[agent_id]).to(device).max(dim=-1).values
-    
-    indices = torch.randperm(T)
+        advs = torch.tensor(advs, dtype=torch.float32, device=device)
+        returns = torch.tensor(returns, dtype=torch.float32, device=device)
+        old_logps = torch.stack(logp_buf[agent_id]).to(device)
+        
+        indices = torch.randperm(T)
 
-    for epoch in range(epochs):
-        epoch_policy_loss = 0.0
-        epoch_value_loss = 0.0
-        epoch_entropy = 0.0
-        num_batches = 0
+        for epoch in range(epochs):
+            epoch_policy_loss = 0.0
+            epoch_value_loss = 0.0
+            epoch_entropy = 0.0
+            num_batches = 0
 
-        for i in range(0, T, batch_size):
-            batch_indices = indices[i:i + batch_size]
+            for i in range(0, T, batch_size):
+                batch_indices = indices[i:i + batch_size]
 
-            obs_batch_list = [obs_buf[agent_id][idx] for idx in batch_indices]
-            obs_batch = batch_obs(obs_batch_list)
-            obs_batch = to_device(obs_batch, device=device)
+                obs_batch_list = [obs_buf[agent_id][idx] for idx in batch_indices]
+                obs_batch = batch_obs(obs_batch_list)
+                obs_batch = to_device(obs_batch, device=device)
 
-            logits, new_values = model(obs_batch)
-            dist = Categorical(logits=logits)
-            entropy = dist.entropy().mean()
+                logits, new_values = model(obs_batch)
+                dist = Categorical(logits=logits)
+                entropy = dist.entropy().mean()
 
-            actions = torch.tensor([action_buf[agent_id][idx] for idx in batch_indices], device=device)
-            new_logp = dist.log_prob(actions)
-            old_logp = old_logps[batch_indices]
+                actions = torch.tensor([action_buf[agent_id][idx] for idx in batch_indices], device=device)
+                new_logp = dist.log_prob(actions)
+                old_logp = old_logps[batch_indices]
 
-            adv_batch = advs[batch_indices]
-            ratio = torch.exp(new_logp - old_logp)
-            surr1 = ratio * adv_batch
-            surr2 = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * adv_batch
-            policy_loss = -torch.min(surr1, surr2).mean()
+                adv_batch = advs[batch_indices]
+                ratio = torch.exp(new_logp - old_logp)
+                surr1 = ratio * adv_batch
+                surr2 = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * adv_batch
+                policy_loss = -torch.min(surr1, surr2).mean()
 
-            ret_batch = returns[batch_indices]
-            v_pred = new_values.squeeze(-1)
-            ret_batch = (ret_batch - ret_batch.mean()) / (ret_batch.std() + 1e-8)
-            value_loss = F.mse_loss(v_pred, ret_batch)
+                ret_batch = returns[batch_indices]
+                v_pred = new_values.squeeze(-1)
+                ret_batch = (ret_batch - ret_batch.mean()) / (ret_batch.std() + 1e-8)
+                value_loss = F.mse_loss(v_pred, ret_batch)
 
-            optimizer.zero_grad()
-            (policy_loss - entropy_coef * entropy + value_loss * vf_coef).backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
-            optimizer.step()
-            epoch_value_loss += value_loss.item()
-            epoch_policy_loss += policy_loss.item()
-            num_batches += 1
+                # ---------------- Actor Update ----------------
+                optm_actor.zero_grad()
+                (policy_loss - entropy_coef * entropy).backward(retain_graph=True)
+                torch.nn.utils.clip_grad_norm_(model.actor_parameters(), max_norm=0.5)
+                optm_actor.step()
 
-        policy_losses.append(epoch_policy_loss / num_batches)
-        value_losses.append(epoch_value_loss / num_batches)
+                # ---------------- Critic Update ----------------
+                optm_critic.zero_grad()
+                (value_loss * vf_coef).backward()
+                torch.nn.utils.clip_grad_norm_(model.critic_parameters(), max_norm=0.5)
+                optm_critic.step()
 
+                epoch_policy_loss += policy_loss.item()
+                epoch_value_loss += value_loss.item()
+                epoch_entropy += entropy.item()
+                num_batches += 1
+
+            # ------------- KL Divergence Check -------------
+            if num_batches > 0:
+                with torch.no_grad():
+                    sample_size = min(64, T)
+                    sample_indices = torch.randperm(T)[:sample_size]
+                    sample_obs = batch_obs([obs_buf[agent_id][idx] for idx in sample_indices])
+                    sample_obs = to_device(sample_obs, device=device)
+                    sample_actions = torch.tensor([action_buf[agent_id][idx] for idx in sample_indices], device=device)
+
+                    new_logits, _ = model(sample_obs)
+                    new_dist = Categorical(logits=new_logits)
+                    new_logp = new_dist.log_prob(sample_actions)
+                    old_logp_sample = old_logps[sample_indices]
+                    logp_diff = new_logp - old_logp_sample
+                    approx_kl = ((torch.exp(logp_diff) - 1) - logp_diff).mean()
+                    if approx_kl > target_kl:
+                        break
+
+            policy_losses.append(epoch_policy_loss / num_batches)
+            value_losses.append(epoch_value_loss / num_batches)
+
+    if len(policy_losses) == 0:
+        return 0.0, 0.0
     return np.mean(policy_losses), np.mean(value_losses)
 

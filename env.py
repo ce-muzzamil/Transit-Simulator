@@ -150,8 +150,8 @@ class TransitNetworkEnv:
 
         self.directed_sub_routes = {}
         for i in range(self.num_routes):
-            for reversed in [False, True]:
-                self.transit_system.add_bus_on_route(i, reversed=reversed)
+            for is_reversed in [False, True]:
+                self.transit_system.add_bus_on_route(i, reversed=is_reversed)
                 bus = self.transit_system.buses[0]
                 nodes = np.array([node.node_id for node in bus.to_go])
                 indices = [j for j in range(len(nodes))]
@@ -159,7 +159,7 @@ class TransitNetworkEnv:
                 edge_attrs = np.array(bus.distances[1:]) / 1000.0
                 self.transit_system.buses.remove(bus)
                 self.transit_system.num_busses_added = 0
-                self.directed_sub_routes[(i, reversed)] = (
+                self.directed_sub_routes[(i, is_reversed)] = (
                     nodes,
                     edge_index,
                     edge_attrs,
@@ -378,6 +378,7 @@ class TransitNetworkEnv:
                 print((route_id, is_reversed), (indices,
                 edge_index,
                 edge_attr))
+
                 sub_data = Data(
                     x=obs["x"][indices],
                     edge_index=edge_index,

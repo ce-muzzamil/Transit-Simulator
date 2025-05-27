@@ -119,7 +119,7 @@ class Bus:
                 if all([node in route.node_pair for node in node_pair]):
                     self.distances.append(route.distance)
                     break
-
+        print(self.distances)
         self.distance_next_node = self.distances.pop(0)
 
     def get_node_by_id(self, id: int) -> Node:

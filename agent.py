@@ -254,73 +254,6 @@ class Transformer(nn.Module):
         return dec_output
 
 
-# class FeatureExtractor(nn.Module):
-#     def __init__(
-#         self,
-#         observation_space,
-#         gnn_hidden_dim=128,
-#         gnn_num_heads=4,
-#         embed_size=256,
-#         transformer_num_heads=4,
-#         num_encoder_layers=6,
-#         num_decoder_layers=6,
-#         dropout_rate=0.0,
-#     ):
-#         super().__init__()
-
-#         self.feature_dim = embed_size
-#         self.topology = GATv2FeatureExtractor(
-#             observation_space["x"].shape[-1],
-#             observation_space["edge_attr"].shape[-1],
-#             gnn_hidden_dim,
-#             gnn_num_heads,
-#             embed_size,
-#             dropout_rate=dropout_rate,
-#         )
-
-#         self.route = GATv2FeatureExtractor(
-#             observation_space["x_route"].shape[-1],
-#             observation_space["edge_attr_route"].shape[-1],
-#             gnn_hidden_dim,
-#             gnn_num_heads,
-#             embed_size,
-#             dropout_rate=dropout_rate,
-#         )
-
-#         self.transformer = Transformer(
-#             embed_size=embed_size,
-#             num_heads=transformer_num_heads,
-#             num_encoder_layers=num_encoder_layers,
-#             num_decoder_layers=num_decoder_layers,
-#             dropout_rate=dropout_rate,
-#         )
-
-#     def forward(self, observations):
-#         route = {
-#             f"x": observations[f"x_route"],
-#             f"edge_index": observations[f"edge_index_route"],
-#             f"edge_attr": observations[f"edge_attr_route"],
-#         }
-
-#         observations = {
-#             "x": observations["x"],
-#             "edge_index": observations["edge_index"],
-#             "edge_attr": observations["edge_attr"],
-#         }
-
-#         # topology_vector = self.topology(observations)  # N,L,E
-#         routes_vector = self.route(route)  # (N, L, E)
-
-#         if routes_vector.ndim == 2:
-#             routes_vector = routes_vector.unsqueeze(0)
-
-#         if topology_vector.ndim == 2:
-#             topology_vector = topology_vector.unsqueeze(0)
-
-#         out = self.transformer(topology_vector, routes_vector)  # N,L,E
-#         out = torch.mean(out, dim=1)  # N,E
-#         return out
-
 class FeatureExtractor(nn.Module):
     def __init__(
         self,
@@ -354,11 +287,12 @@ class FeatureExtractor(nn.Module):
             dropout_rate=dropout_rate,
         )
 
-        self.encoder_layers = nn.ModuleList(
-            [
-                EncoderLayer(embed_size, transformer_num_heads, dropout_rate)
-                for _ in range(num_encoder_layers)
-            ]
+        self.transformer = Transformer(
+            embed_size=embed_size,
+            num_heads=transformer_num_heads,
+            num_encoder_layers=num_encoder_layers,
+            num_decoder_layers=num_decoder_layers,
+            dropout_rate=dropout_rate,
         )
 
     def forward(self, observations):
@@ -368,17 +302,83 @@ class FeatureExtractor(nn.Module):
             f"edge_attr": observations[f"edge_attr_route"],
         }
 
-        # topology_vector = self.topology(observations)  # N,L,E
+        observations = {
+            "x": observations["x"],
+            "edge_index": observations["edge_index"],
+            "edge_attr": observations["edge_attr"],
+        }
+
+        topology_vector = self.topology(observations)  # N,L,E
         routes_vector = self.route(route)  # (N, L, E)
 
         if routes_vector.ndim == 2:
             routes_vector = routes_vector.unsqueeze(0)
 
-        for layer in self.encoder_layers:
-            routes_vector = layer(routes_vector)
+        if topology_vector.ndim == 2:
+            topology_vector = topology_vector.unsqueeze(0)
 
-        out = torch.mean(routes_vector, dim=1)  # N,E
+        out = self.transformer(topology_vector, routes_vector)  # N,L,E
+        out = torch.mean(out, dim=1)  # N,E
         return out
+
+# class FeatureExtractor(nn.Module):
+#     def __init__(
+#         self,
+#         observation_space,
+#         gnn_hidden_dim=128,
+#         gnn_num_heads=4,
+#         embed_size=256,
+#         transformer_num_heads=4,
+#         num_encoder_layers=6,
+#         num_decoder_layers=6,
+#         dropout_rate=0.0,
+#     ):
+#         super().__init__()
+
+#         self.feature_dim = embed_size
+#         self.topology = GATv2FeatureExtractor(
+#             observation_space["x"].shape[-1],
+#             observation_space["edge_attr"].shape[-1],
+#             gnn_hidden_dim,
+#             gnn_num_heads,
+#             embed_size,
+#             dropout_rate=dropout_rate,
+#         )
+
+#         self.route = GATv2FeatureExtractor(
+#             observation_space["x_route"].shape[-1],
+#             observation_space["edge_attr_route"].shape[-1],
+#             gnn_hidden_dim,
+#             gnn_num_heads,
+#             embed_size,
+#             dropout_rate=dropout_rate,
+#         )
+
+#         self.encoder_layers = nn.ModuleList(
+#             [
+#                 EncoderLayer(embed_size, transformer_num_heads, dropout_rate)
+#                 for _ in range(num_encoder_layers)
+#             ]
+#         )
+
+#     def forward(self, observations):
+#         route = {
+#             f"x": observations[f"x_route"],
+#             f"edge_index": observations[f"edge_index_route"],
+#             f"edge_attr": observations[f"edge_attr_route"],
+#         }
+
+#         # topology_vector = self.topology(observations)  # N,L,E
+#         routes_vector = self.route(route)  # (N, L, E)
+
+#         if routes_vector.ndim == 2:
+#             routes_vector = routes_vector.unsqueeze(0)
+
+#         for layer in self.encoder_layers:
+#             routes_vector = layer(routes_vector)
+
+#         out = torch.mean(routes_vector, dim=1)  # N,E
+#         return out
 
 class Model(nn.Module):
     def __init__(
@@ -399,18 +399,7 @@ class Model(nn.Module):
 
         self.num_actions = action_space.n
 
-        self.feature_extractor_a = FeatureExtractor(
-            observation_space=observation_space,
-            gnn_hidden_dim=gnn_hidden_dim,
-            gnn_num_heads=gnn_num_heads,
-            embed_size=embed_size,
-            transformer_num_heads=transformer_num_heads,
-            num_encoder_layers=num_encoder_layers,
-            num_decoder_layers=num_decoder_layers,
-            dropout_rate=dropout_rate,
-        )
-
-        self.feature_extractor_b = FeatureExtractor(
+        self.feature_extractor = FeatureExtractor(
             observation_space=observation_space,
             gnn_hidden_dim=gnn_hidden_dim,
             gnn_num_heads=gnn_num_heads,
@@ -434,25 +423,13 @@ class Model(nn.Module):
             nn.ReLU(),
             nn.Linear(embed_size, embed_size),
             nn.ReLU(),
-            nn.Linear(embed_size, embed_size),
-            nn.ReLU(),
-            nn.Linear(embed_size, embed_size),
-            nn.ReLU(),
             nn.Linear(embed_size, 1),
         )
 
-    
-    def actor_parameters(self):
-        return itertools.chain(self.feature_extractor_a.parameters(), self.actor.parameters())
-    
-    def critic_parameters(self):
-        return itertools.chain(self.feature_extractor_b.parameters(), self.critic.parameters()) 
-    
     def forward(self, x):
-        embed_a = self.feature_extractor_a(x)
-        embed_b = self.feature_extractor_b(x)
-        logits = self.actor(embed_a).squeeze(-1)
-        value = self.critic(embed_b).squeeze(-1)
+        embed = self.feature_extractor(x)
+        logits = self.actor(embed).squeeze(-1)
+        value = self.critic(embed).squeeze(-1)
         return logits, value
 
 def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True):
@@ -552,7 +529,6 @@ def ppo_update(
     batch_size=32,
     device="cpu",
 ):
-    optm_actor, optm_critic = optimizer
     policy_losses, value_losses = [], []
 
     for agent_id in obs_buf.keys():
@@ -623,17 +599,11 @@ def ppo_update(
                 ret_batch = (ret_batch - ret_batch.mean()) / (ret_batch.std() + 1e-8)
                 value_loss = F.mse_loss(v_pred, ret_batch)
 
-                # ---------------- Actor Update ----------------
-                optm_actor.zero_grad()
-                (policy_loss - entropy_coef * entropy).backward(retain_graph=True)
+                optimizer.zero_grad()
+                (policy_loss - entropy_coef * entropy + value_loss * vf_coef).backward(retain_graph=True)
                 torch.nn.utils.clip_grad_norm_(model.actor_parameters(), max_norm=0.5)
-                optm_actor.step()
+                optimizer.step()
 
-                # ---------------- Critic Update ----------------
-                optm_critic.zero_grad()
-                (value_loss * vf_coef).backward()
-                torch.nn.utils.clip_grad_norm_(model.critic_parameters(), max_norm=0.5)
-                optm_critic.step()
 
                 epoch_policy_loss += policy_loss.item()
                 epoch_value_loss += value_loss.item()

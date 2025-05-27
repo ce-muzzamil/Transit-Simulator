@@ -466,16 +466,15 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
 
             with torch.no_grad():
                 logits, value = model(to_device(obs[agent_id], device=device))
-                probs = F.softmax(logits, dim=-1)
+                # probs = F.softmax(logits, dim=-1)
 
-            # dist = Categorical(logits=logits)
-            # action = dist.sample()
-            action = torch.argmax(probs, axis=-1)
+            dist = Categorical(logits=logits)
+            action = dist.sample()
+            # action = torch.argmax(probs, axis=-1)
 
             obs_buf[agent_id].append(to_device(detach_grads(obs[agent_id]), device="cpu"))
             action_buf[agent_id].append(action.item())
-            # logp_buf[agent_id].append(dist.log_prob(action).detach().cpu())
-            logp_buf[agent_id].append(torch.log(probs).squeeze(-1).detach().cpu())
+            logp_buf[agent_id].append(dist.log_prob(action).detach().cpu())
             value_buf[agent_id].append(value.squeeze(-1).detach().cpu())
 
             actions[agent_id] = action.item()

@@ -601,7 +601,7 @@ def ppo_update(
 
                 optimizer.zero_grad()
                 (policy_loss - entropy_coef * entropy + value_loss * vf_coef).backward(retain_graph=True)
-                torch.nn.utils.clip_grad_norm_(model.actor_parameters(), max_norm=0.5)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
                 optimizer.step()
 
 

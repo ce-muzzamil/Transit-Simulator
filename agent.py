@@ -600,7 +600,7 @@ def ppo_update(
                 value_loss = F.mse_loss(v_pred, ret_batch)
 
                 optimizer.zero_grad()
-                (policy_loss - entropy_coef * entropy + value_loss * vf_coef).backward(retain_graph=True)
+                (policy_loss - entropy_coef * entropy + value_loss * vf_coef).backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
                 optimizer.step()
 

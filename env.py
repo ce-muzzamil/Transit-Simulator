@@ -149,6 +149,8 @@ class TransitNetworkEnv:
                 np.random.seed(int(str(time.time()).split(".")[-1]))
 
         self.directed_sub_routes = {}
+        self.node_2_index = {node.node_id:e for e, node in enumerate(sorted(self.transit_system.topology.nodes, key=lambda x: x.node_id))}
+
         for i in range(self.num_routes):
             for is_reversed in [False, True]:
                 self.transit_system.add_bus_on_route(i, reversed=is_reversed)
@@ -184,7 +186,7 @@ class TransitNetworkEnv:
     def get_updated_node_data(self):
         data = []
 
-        for node in self.transit_system.topology.nodes:
+        for node in sorted(self.transit_system.topology.nodes, key=lambda x: x.node_id):
             x = node.get_array()
             if node.associated_route != -1:
                 buses_data = {}
@@ -370,20 +372,17 @@ class TransitNetworkEnv:
     def get_sub_graphs(self, obs: dict) -> list[Data]:
         if obs["edge_index"].ndim == 2:
             subgraphs: dict = {}
+            
+
             for (route_id, is_reversed), (
-                indices,
+                nodes_ids,
                 edge_index,
                 edge_attr,
             ) in self.directed_sub_routes.items():
-                print((route_id, is_reversed), (indices,
-                edge_index,
-                edge_attr))
-
                 sub_data = Data(
-                    x=obs["x"][indices],
+                    x=obs["x"][[self.node_2_index[node_id] for node_id in nodes_ids]],
                     edge_index=edge_index,
                     edge_attr=edge_attr,
-                    y=None if "y" not in obs else obs["y"][indices],
                 )
                 sub_data["x"][:, -1] = float(is_reversed)
                 subgraphs[(route_id, is_reversed)] = self.fix_obs_shape(

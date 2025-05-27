@@ -609,23 +609,23 @@ def ppo_update(
             epoch_entropy += entropy.item()
             num_batches += 1
 
-        # ------------- KL Divergence Check -------------
-        if num_batches > 0:
-            with torch.no_grad():
-                sample_size = min(64, T)
-                sample_indices = torch.randperm(T)[:sample_size]
-                sample_obs = batch_obs([obs_buf[agent_id][idx] for idx in sample_indices])
-                sample_obs = to_device(sample_obs, device=device)
-                sample_actions = torch.tensor([action_buf[agent_id][idx] for idx in sample_indices], device=device)
+        # # ------------- KL Divergence Check -------------
+        # if num_batches > 0:
+        #     with torch.no_grad():
+        #         sample_size = min(64, T)
+        #         sample_indices = torch.randperm(T)[:sample_size]
+        #         sample_obs = batch_obs([obs_buf[agent_id][idx] for idx in sample_indices])
+        #         sample_obs = to_device(sample_obs, device=device)
+        #         sample_actions = torch.tensor([action_buf[agent_id][idx] for idx in sample_indices], device=device)
 
-                new_logits, _ = model(sample_obs)
-                new_dist = Categorical(logits=new_logits)
-                new_logp = new_dist.log_prob(sample_actions)
-                old_logp_sample = old_logps[sample_indices]
-                logp_diff = new_logp - old_logp_sample
-                approx_kl = ((torch.exp(logp_diff) - 1) - logp_diff).mean()
-                if approx_kl > target_kl:
-                    break
+        #         new_logits, _ = model(sample_obs)
+        #         new_dist = Categorical(logits=new_logits)
+        #         new_logp = new_dist.log_prob(sample_actions)
+        #         old_logp_sample = old_logps[sample_indices]
+        #         logp_diff = new_logp - old_logp_sample
+        #         approx_kl = ((torch.exp(logp_diff) - 1) - logp_diff).mean()
+        #         if approx_kl > target_kl:
+        #             break
 
         policy_losses.append(epoch_policy_loss / num_batches)
         value_losses.append(epoch_value_loss / num_batches)

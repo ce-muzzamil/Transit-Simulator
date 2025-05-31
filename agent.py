@@ -594,7 +594,7 @@ def ppo_update(
 
                 ret_batch = returns[batch_indices]
                 v_pred = new_values.squeeze(-1)
-                ret_batch = (ret_batch - ret_batch.mean()) / (ret_batch.std() + 1e-8)
+                # ret_batch = (ret_batch - ret_batch.mean()) / (ret_batch.std() + 1e-8)
                 value_loss = F.mse_loss(v_pred, ret_batch)
 
                 optimizer.zero_grad()

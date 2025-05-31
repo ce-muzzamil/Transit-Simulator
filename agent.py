@@ -632,4 +632,3 @@ def ppo_update(
     if len(policy_losses) == 0:
         return 0.0, 0.0
     return np.mean(policy_losses), np.mean(value_losses)
-

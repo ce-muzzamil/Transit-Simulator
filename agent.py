@@ -552,7 +552,7 @@ def ppo_update(
 
         advs = torch.tensor(advs, dtype=torch.float32, device=device)
         advs = (advs-advs.min()) / (advs.max()-advs.min() + 1e-8)  # Normalize advantages
-        returns = torch.tensor(returns, dtype=torch.float32, device=device)
+        returns = torch.tensor(returns, dtype=torch.float32, device=device)/1000
         old_logps = torch.stack(logp_buf[agent_id]).to(device)
         
         indices = torch.randperm(T)

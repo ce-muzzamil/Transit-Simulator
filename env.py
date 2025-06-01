@@ -358,7 +358,7 @@ class TransitNetworkEnv:
         for agent_id in self.possible_agents:
             if self.avg_waiting_time[agent_id] > 60:
                 terminated[agent_id] = True
-                reward[agent_id] = -1000 # (self.hours_of_opperation_per_day - self.current_time / 3600.0) ** 2
+                reward[agent_id] = 0 # (self.hours_of_opperation_per_day - self.current_time / 3600.0) ** 2
 
         obs: dict = self.update_graph()
         subgraphs = self.get_sub_graphs(obs)
@@ -465,8 +465,9 @@ class TransitNetworkEnv:
 
             buses = [bus for bus in self.transit_system.retired_buses if bus.service_route == route_id and bus.reversed == is_reversed]
             if len(buses) > 0:
-                utilzed_bus_capacity = sum([bus.num_passengers_served/bus.capacity for bus in buses])
-                reward += utilzed_bus_capacity
+                utilzed_bus_capacity = [bus.num_passengers_served/bus.capacity for bus in buses]
+                high_utilzation_reward = sum([i>0.5 for i in utilzed_bus_capacity])
+                reward += sum(utilzed_bus_capacity) + high_utilzation_reward
 
             for bus in self.transit_system.retired_buses:
                 self.transit_system.retired_buses.remove(bus)

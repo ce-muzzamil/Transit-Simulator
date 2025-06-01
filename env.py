@@ -351,7 +351,7 @@ class TransitNetworkEnv:
         if self.current_day >= self.analysis_period_days:
             for agent_id in self.possible_agents:
                 truncated[agent_id] = True
-                reward[agent_id] = 1000 #self.hours_of_opperation_per_day ** 2
+                reward[agent_id] = 0 #self.hours_of_opperation_per_day ** 2
 
         info = {**reward_info}
 

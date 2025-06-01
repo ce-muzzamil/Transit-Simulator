@@ -336,15 +336,6 @@ class FeatureExtractor(nn.Module):
         super().__init__()
 
         self.feature_dim = embed_size
-        self.topology = GATv2FeatureExtractor(
-            observation_space["x"].shape[-1],
-            observation_space["edge_attr"].shape[-1],
-            gnn_hidden_dim,
-            gnn_num_heads,
-            embed_size,
-            dropout_rate=dropout_rate,
-        )
-
         self.route = GATv2FeatureExtractor(
             observation_space["x_route"].shape[-1],
             observation_space["edge_attr_route"].shape[-1],

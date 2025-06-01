@@ -351,14 +351,14 @@ class TransitNetworkEnv:
         if self.current_day >= self.analysis_period_days:
             for agent_id in self.possible_agents:
                 truncated[agent_id] = True
-                reward[agent_id] = self.hours_of_opperation_per_day ** 2
+                reward[agent_id] = 2 #self.hours_of_opperation_per_day ** 2
 
         info = {**reward_info}
 
         for agent_id in self.possible_agents:
             if self.avg_waiting_time[agent_id] > 60:
                 terminated[agent_id] = True
-                reward[agent_id] = - (self.hours_of_opperation_per_day - self.current_time / 3600.0) ** 2
+                reward[agent_id] = -2 # (self.hours_of_opperation_per_day - self.current_time / 3600.0) ** 2
 
         obs: dict = self.update_graph()
         subgraphs = self.get_sub_graphs(obs)
@@ -447,7 +447,7 @@ class TransitNetworkEnv:
                 avg_stranding_count = 0  # counts
 
             reward_2 = 0
-            reward_2 += -(avg_waiting_time // 60)
+            reward_2 += -(avg_waiting_time / 15)
 
             # if avg_stranding_count > 0 and action == 0:
             #     reward_2 += -2

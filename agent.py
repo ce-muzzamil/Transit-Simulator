@@ -558,6 +558,7 @@ def ppo_update(
                     if bus.created_at == current_time:
                         if bus.num_passengers_served/bus.capacity > 0.25:
                             additional_reward += 5
+                            print("detected")
                             break
             delta = reward_buf[agent_id][t] + additional_reward + gamma * next_value * next_non_terminal - value_buf[agent_id][t]
             gae = delta + gamma * lam * next_non_terminal * gae

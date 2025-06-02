@@ -445,6 +445,8 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
     )
 
     killed_agents = set()
+    sc = 0
+    num_killed = 0
     for step_count in range(rollout_len):
         obs = to_torch(obs)
 
@@ -468,8 +470,6 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
             actions[agent_id] = action.item()
 
         next_obs, reward, terminated, truncated, info = env.step(actions)
-        sc = 0
-        num_killed = 0
         for agent_id in env.possible_agents:
             if agent_id not in killed_agents:                
                 reward_buf[agent_id].append(torch.tensor(reward[agent_id], dtype=torch.float32))
@@ -482,8 +482,9 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                 if terminated[agent_id]:
                     num_killed += 1
                     sc += step_count
-        if num_killed > 0:
-            print(f"Killed {num_killed}/{len(env.possible_agents)} agents at step {step_count/num_killed}.")        
+
+    if num_killed > 0:
+        print(f"Killed {num_killed}/{len(env.possible_agents)} agents at step {step_count/num_killed}.")        
                     
                 
         info_buf.append(info)

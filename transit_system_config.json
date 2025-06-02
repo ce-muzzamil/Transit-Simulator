@@ -1,7 +1,7 @@
 {
     "num_busses_per_route": 0,
-    "min_bus_capacity": 15,
-    "max_bus_capacity": 16,
+    "min_bus_capacity": 49,
+    "max_bus_capacity": 50,
     "avg_bus_speed": 10.0,
     "analysis_period_sec": 60,
     "min_num_stops_per_route": 5,

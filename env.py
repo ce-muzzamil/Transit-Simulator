@@ -333,7 +333,7 @@ class TransitNetworkEnv:
                 decision = all_action[agent_id]
                 if decision == 1:
                     self.transit_system.add_bus_on_route(
-                        route_id, reversed=is_reversed, created_at=self.current_time
+                        route_id, reversed=is_reversed, time=self.current_time
                     )
 
         reward, info = self.reward(all_action)

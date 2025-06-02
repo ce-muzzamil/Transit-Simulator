@@ -501,7 +501,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                 for bus in buses:
                     if bus.created_at == current_time:
                         if bus.num_passengers_served/bus.capacity > 0.25:
-                            additional_reward += 10
+                            additional_reward += 100
                             break
                 if additional_reward > 0:
                     reward_buf[agent_id][t] = additional_reward

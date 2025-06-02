@@ -472,7 +472,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
         for agent_id in env.possible_agents:
             if agent_id not in killed_agents:                
                 reward_buf[agent_id].append(torch.tensor(reward[agent_id], dtype=torch.float32))
-                info_buf[agent_id].append(info)
+                info_buf[agent_id].append(info[agent_id])
                 terminated_buf[agent_id].append(terminated[agent_id])
                 truncated_buf[agent_id].append(truncated[agent_id])
 

@@ -466,7 +466,7 @@ class TransitNetworkEnv:
             buses = [bus for bus in self.transit_system.retired_buses if bus.service_route == route_id and bus.reversed == is_reversed]
             if len(buses) > 0:
                 utilzed_bus_capacity = [bus.num_passengers_served/bus.capacity for bus in buses]
-                high_utilzation_reward = sum([i>0.5 for i in utilzed_bus_capacity])
+                high_utilzation_reward = sum([i>0.5 for i in utilzed_bus_capacity]) * 2
                 reward += sum(utilzed_bus_capacity) + high_utilzation_reward
 
             for bus in self.transit_system.retired_buses:

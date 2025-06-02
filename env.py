@@ -364,7 +364,7 @@ class TransitNetworkEnv:
             if self.avg_waiting_time[agent_id] > 60:
                 terminated[agent_id] = True
                 if not self.zero_terminal_reward:
-                    reward[agent_id] = -10 # (self.hours_of_opperation_per_day - self.current_time / 3600.0) ** 2
+                    reward[agent_id] = -1000 # (self.hours_of_opperation_per_day - self.current_time / 3600.0) ** 2
 
         obs: dict = self.update_graph()
         subgraphs = self.get_sub_graphs(obs)

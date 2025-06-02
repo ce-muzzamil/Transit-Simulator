@@ -557,8 +557,8 @@ def ppo_update(
                 for bus in buses:
                     if bus.created_at == current_time:
                         if bus.num_passengers_served/bus.capacity > 0.25:
-                            additional_reward += 5
-                            print("detected")
+                            additional_reward += 10
+                            # print("detected")
                             break
             delta = reward_buf[agent_id][t] + additional_reward + gamma * next_value * next_non_terminal - value_buf[agent_id][t]
             gae = delta + gamma * lam * next_non_terminal * gae
@@ -566,7 +566,7 @@ def ppo_update(
             returns.insert(0, gae + value_buf[agent_id][t])
 
         advs = torch.tensor(advs, dtype=torch.float32, device=device)
-        # advs = (advs - advs.mean()) / (advs.std() + 1e-8)  # Normalize advantages
+        advs = (advs - advs.mean()) / (advs.std() + 1e-8)  # Normalize advantages
         returns = torch.tensor(returns, dtype=torch.float32, device=device)
         old_logps = torch.stack(logp_buf[agent_id]).to(device)
         

@@ -159,7 +159,7 @@ class TransitNetworkEnv:
 
         for i in range(self.num_routes):
             for is_reversed in [False, True]:
-                self.transit_system.add_bus_on_route(i, reversed=is_reversed)
+                self.transit_system.add_bus_on_route(i, reversed=is_reversed, time=0)
                 bus = self.transit_system.buses[0]
                 nodes = np.array([node.node_id for node in bus.to_go])
                 indices = [j for j in range(len(nodes))]

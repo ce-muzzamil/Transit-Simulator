@@ -452,10 +452,10 @@ class TransitNetworkEnv:
                 avg_stranding_count = 0  # counts
 
             reward_2 = 0
-            reward_2 += -(avg_waiting_time / 60)
+            reward_2 -= avg_waiting_time / 60.0
 
-            # if avg_stranding_count > 0 and action == 0:
-            #     reward_2 += -2
+            if avg_stranding_count > 0 and action == 0:
+                reward_2 += -1
 
             self.avg_waiting_time[agent_id] = avg_waiting_time
 

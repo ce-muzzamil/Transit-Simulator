@@ -490,7 +490,23 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
     if num_killed > 0:
         print(f"Killed {num_killed}/{len(env.possible_agents)} agents at step {int(step_count/num_killed)}.")        
      
+    for agent_id in obs_buf.keys():
+        T = len(reward_buf[agent_id])
 
+        for t in reversed(range(T)):
+            current_time = info_buf[agent_id][t]["current_time"]
+            additional_reward = 0
+            for i in range(t, T):
+                buses = info_buf[agent_id][i]["retired_buses"]
+                for bus in buses:
+                    if bus.created_at == current_time:
+                        if bus.num_passengers_served/bus.capacity > 0.25:
+                            additional_reward += 10
+                            break
+                if additional_reward > 0:
+                    reward_buf[agent_id][t] = additional_reward
+                    break
+                
     return (
         obs_buf,
         action_buf,
@@ -551,16 +567,7 @@ def ppo_update(
             next_value = last_value if t == T - 1 else value_buf[agent_id][t + 1]
             next_non_terminal = 1.0 - float(done_buf[t])
             current_time = info_buf[agent_id][t]["current_time"]
-            additional_reward = 0
-            for i in range(t, T):
-                buses = info_buf[agent_id][i]["retired_buses"]
-                for bus in buses:
-                    if bus.created_at == current_time:
-                        if bus.num_passengers_served/bus.capacity > 0.25:
-                            additional_reward += 10
-                            # print("detected")
-                            break
-            delta = reward_buf[agent_id][t] + additional_reward + gamma * next_value * next_non_terminal - value_buf[agent_id][t]
+            delta = reward_buf[agent_id][t] + gamma * next_value * next_non_terminal - value_buf[agent_id][t]
             gae = delta + gamma * lam * next_non_terminal * gae
             advs.insert(0, gae)
             returns.insert(0, gae + value_buf[agent_id][t])

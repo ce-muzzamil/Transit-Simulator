@@ -380,7 +380,6 @@ class TransitNetworkEnv:
     def get_sub_graphs(self, obs: dict) -> list[Data]:
         if obs["edge_index"].ndim == 2:
             subgraphs: dict = {}
-            
 
             for (route_id, is_reversed), (
                 nodes_ids,
@@ -453,7 +452,7 @@ class TransitNetworkEnv:
                 avg_stranding_count = 0  # counts
 
             reward_2 = 0
-            reward_2 += -(avg_waiting_time / 15)
+            reward_2 += -(avg_waiting_time / 60)
 
             # if avg_stranding_count > 0 and action == 0:
             #     reward_2 += -2
@@ -473,7 +472,7 @@ class TransitNetworkEnv:
             if len(buses) > 0:
                 utilzed_bus_capacity = [bus.num_passengers_served/bus.capacity for bus in buses]
                 high_utilzation_reward = sum([i>0.5 for i in utilzed_bus_capacity]) * 2
-                reward += sum(utilzed_bus_capacity) + high_utilzation_reward
+                reward += high_utilzation_reward
 
             for bus in self.transit_system.retired_buses:
                 self.transit_system.retired_buses.remove(bus)

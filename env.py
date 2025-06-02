@@ -20,6 +20,10 @@ class TransitNetworkEnv:
         else:
             self.force_seed = None
 
+        self.zero_terminal_reward = False
+        if "zero_terminal_reward" in config:
+            self.zero_terminal_reward = config["zero_terminal_reward"]
+
         self.is_training = is_training
         with open("transit_system_config.json", "r") as file:
             self.transit_system_config = json.load(file)
@@ -351,14 +355,16 @@ class TransitNetworkEnv:
         if self.current_day >= self.analysis_period_days:
             for agent_id in self.possible_agents:
                 truncated[agent_id] = True
-                reward[agent_id] = 10 #self.hours_of_opperation_per_day ** 2
+                if not self.zero_terminal_reward:
+                    reward[agent_id] = 10 #self.hours_of_opperation_per_day ** 2
 
         info = {**reward_info}
 
         for agent_id in self.possible_agents:
             if self.avg_waiting_time[agent_id] > 60:
                 terminated[agent_id] = True
-                reward[agent_id] = -10 # (self.hours_of_opperation_per_day - self.current_time / 3600.0) ** 2
+                if not self.zero_terminal_reward:
+                    reward[agent_id] = -10 # (self.hours_of_opperation_per_day - self.current_time / 3600.0) ** 2
 
         obs: dict = self.update_graph()
         subgraphs = self.get_sub_graphs(obs)

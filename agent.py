@@ -456,9 +456,6 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
 
             with torch.no_grad():
                 logits, value = model(to_device(obs[agent_id], device=device))
-                # probs = F.softmax(logits, dim=-1)
-
-            # dist = Categorical(probs=probs)
             dist = Categorical(logits=logits)
 
             action = dist.sample()
@@ -471,6 +468,8 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
             actions[agent_id] = action.item()
 
         next_obs, reward, terminated, truncated, info = env.step(actions)
+        sc = 0
+        num_killed = 0
         for agent_id in env.possible_agents:
             if agent_id not in killed_agents:                
                 reward_buf[agent_id].append(torch.tensor(reward[agent_id], dtype=torch.float32))
@@ -481,7 +480,11 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                     if agent_id not in killed_agents:
                         killed_agents.add(agent_id)
                 if terminated[agent_id]:
-                    print(f"Agent {agent_id} terminated at step {step_count}.")
+                    num_killed += 1
+                    sc += step_count
+        if num_killed > 0:
+            print(f"Killed {num_killed} agents at step {step_count/num_killed}.")        
+                    
                 
         info_buf.append(info)
         

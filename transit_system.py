@@ -102,7 +102,7 @@ class TransitSystem:
         
         self.retired_buses = []
 
-    def add_bus_on_route(self, route_id: int, reversed: bool):
+    def add_bus_on_route(self, route_id: int, reversed: bool, time: int):
         """
         Appends a bus to a route id.
 
@@ -119,7 +119,8 @@ class TransitSystem:
                 self.analysis_period_sec,
                 self.topology,
                 reversed=reversed,
-                analysis_period_sec=self.analysis_period_sec
+                analysis_period_sec=self.analysis_period_sec,
+                created_at=time,
             )
         )
         self.num_busses_added += 1

@@ -21,6 +21,7 @@ class Bus:
         topology: Topology,
         reversed: bool,
         analysis_period_sec: int = 60,
+        created_at: int = 0,
     ):
         """
         Arguments:
@@ -43,6 +44,7 @@ class Bus:
         self.total_distance_traversed = 0
         self.num_passengers_served = 0
         self.analysis_period_sec = analysis_period_sec
+        self.created_at = 0
 
         self.topology = topology
         nodes_ids = [

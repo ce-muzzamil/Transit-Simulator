@@ -260,7 +260,6 @@ class Node:
         else:
             self.time_of_last_bus_1 = time
         return to_drop
-    
 
     def distance_to_exit_nodes(self):
         distances = []

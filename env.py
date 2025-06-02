@@ -333,10 +333,10 @@ class TransitNetworkEnv:
                 decision = all_action[agent_id]
                 if decision == 1:
                     self.transit_system.add_bus_on_route(
-                        route_id, reversed=is_reversed
+                        route_id, reversed=is_reversed, created_at=self.current_time
                     )
 
-        reward, reward_info = self.reward(all_action)
+        reward, info = self.reward(all_action)
 
         self.transit_system.step(self.current_time)
 
@@ -356,15 +356,13 @@ class TransitNetworkEnv:
             for agent_id in self.possible_agents:
                 truncated[agent_id] = True
                 if not self.zero_terminal_reward:
-                    reward[agent_id] = 10 #self.hours_of_opperation_per_day ** 2
-
-        info = {**reward_info}
+                    reward[agent_id] = 0 #self.hours_of_opperation_per_day ** 2
 
         for agent_id in self.possible_agents:
             if self.avg_waiting_time[agent_id] > 60:
                 terminated[agent_id] = True
                 if not self.zero_terminal_reward:
-                    reward[agent_id] = -1000 # (self.hours_of_opperation_per_day - self.current_time / 3600.0) ** 2
+                    reward[agent_id] = 0 # (self.hours_of_opperation_per_day - self.current_time / 3600.0) ** 2
 
         obs: dict = self.update_graph()
         subgraphs = self.get_sub_graphs(obs)
@@ -469,10 +467,10 @@ class TransitNetworkEnv:
             reward = reward_3 + reward_2
 
             buses = [bus for bus in self.transit_system.retired_buses if bus.service_route == route_id and bus.reversed == is_reversed]
-            if len(buses) > 0:
-                utilzed_bus_capacity = [bus.num_passengers_served/bus.capacity for bus in buses]
-                high_utilzation_reward = sum([i>0.1 for i in utilzed_bus_capacity]) * 5
-                reward += high_utilzation_reward
+            # if len(buses) > 0:
+            #     utilzed_bus_capacity = [bus.num_passengers_served/bus.capacity for bus in buses]
+            #     high_utilzation_reward = sum([i>0.25 for i in utilzed_bus_capacity]) * 5
+                # reward += high_utilzation_reward
 
             for bus in self.transit_system.retired_buses:
                 self.transit_system.retired_buses.remove(bus)
@@ -481,12 +479,14 @@ class TransitNetworkEnv:
                 "reward_type_2": reward_2,
                 "reward_type_3": reward_3,
                 "reward": reward,
+                "retired_buses": buses,
+                "current_time": self.current_time
             }
 
             rewards[agent_id] = reward
             rewards_info[agent_id] = reward_info
 
-        pd.DataFrame(rewards_info.values()).mean().to_dict()
+        # pd.DataFrame(rewards_info.values()).mean().to_dict()
         return rewards, rewards_info
 
     def render(self):

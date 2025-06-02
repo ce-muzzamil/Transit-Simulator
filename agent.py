@@ -439,7 +439,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
         {agent_id: [] for agent_id in env.possible_agents},
         {agent_id: [] for agent_id in env.possible_agents},
         {agent_id: [] for agent_id in env.possible_agents},
-        [],
+        {agent_id: [] for agent_id in env.possible_agents},
         {agent_id: [] for agent_id in env.possible_agents},
         {agent_id: [] for agent_id in env.possible_agents},
     )
@@ -459,7 +459,6 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
             with torch.no_grad():
                 logits, value = model(to_device(obs[agent_id], device=device))
             dist = Categorical(logits=logits)
-
             action = dist.sample()
 
             obs_buf[agent_id].append(to_device(detach_grads(obs[agent_id]), device="cpu"))
@@ -473,6 +472,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
         for agent_id in env.possible_agents:
             if agent_id not in killed_agents:                
                 reward_buf[agent_id].append(torch.tensor(reward[agent_id], dtype=torch.float32))
+                info_buf[agent_id].append(info)
                 terminated_buf[agent_id].append(terminated[agent_id])
                 truncated_buf[agent_id].append(truncated[agent_id])
 
@@ -483,8 +483,6 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                     num_killed += 1
                     sc += step_count               
                 
-        info_buf.append(info)
-        
         obs = next_obs
         if len(killed_agents) == len(env.possible_agents):
             break
@@ -513,6 +511,7 @@ def ppo_update(
     reward_buf,
     terminated_buf,
     truncated_buf,
+    info_buf,
     logp_buf,
     value_buf,
     gamma=0.995,
@@ -551,7 +550,16 @@ def ppo_update(
         for t in reversed(range(T)):
             next_value = last_value if t == T - 1 else value_buf[agent_id][t + 1]
             next_non_terminal = 1.0 - float(done_buf[t])
-            delta = reward_buf[agent_id][t] + gamma * next_value * next_non_terminal - value_buf[agent_id][t]
+            current_time = info_buf[agent_id][t]["current_time"]
+            additional_reward = 0
+            for i in range(t, T):
+                buses = info_buf[agent_id][i]["retired_buses"]
+                for bus in buses:
+                    if bus.created_at == current_time:
+                        if bus.num_passengers_served/bus.capacity > 0.25:
+                            additional_reward += 2
+                            break
+            delta = reward_buf[agent_id][t] + additional_reward + gamma * next_value * next_non_terminal - value_buf[agent_id][t]
             gae = delta + gamma * lam * next_non_terminal * gae
             advs.insert(0, gae)
             returns.insert(0, gae + value_buf[agent_id][t])

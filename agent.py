@@ -488,9 +488,9 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
         obs = next_obs
         if len(killed_agents) == len(env.possible_agents):
             break
-        
+
     if num_killed > 0:
-        print(f"Killed {num_killed}/{len(env.possible_agents)} agents at step {step_count/num_killed}.")        
+        print(f"Killed {num_killed}/{len(env.possible_agents)} agents at step {int(step_count/num_killed)}.")        
      
 
     return (

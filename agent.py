@@ -483,7 +483,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                     num_killed += 1
                     sc += step_count
         if num_killed > 0:
-            print(f"Killed {num_killed} agents at step {step_count/num_killed}.")        
+            print(f"Killed {num_killed} agents out of {len(env.possible_agents)} at step {step_count/num_killed}.")        
                     
                 
         info_buf.append(info)

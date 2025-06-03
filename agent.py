@@ -486,10 +486,8 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
         obs = next_obs
         if len(killed_agents) == len(env.possible_agents):
             break
-
-    if num_killed > 0:
-        print(f"Killed {num_killed}/{len(env.possible_agents)} agents at step {int(step_count/num_killed)}.")        
-     
+    
+    good_buses  = 0
     for agent_id in obs_buf.keys():
         T = len(reward_buf[agent_id])
 
@@ -505,8 +503,13 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                             break
                 if additional_reward > 0:
                     reward_buf[agent_id][t] = additional_reward
+                    good_buses += 1
                     break
-                
+
+    if num_killed > 0:
+        print(f"Killed {num_killed}/{len(env.possible_agents)} agents at step {int(step_count/num_killed)}.")        
+    print("num_good_buses:", good_buses)
+
     return (
         obs_buf,
         action_buf,

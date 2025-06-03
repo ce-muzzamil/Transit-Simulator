@@ -42,7 +42,7 @@ class Bus:
         self.step_interval = step_interval
         self.reversed = reversed
         self.total_distance_traversed = 0
-        self.num_passengers_served = 0
+        self.passengers_served = set()
         self.analysis_period_sec = analysis_period_sec
         self.created_at = 0
 
@@ -153,6 +153,8 @@ class Bus:
         Returns:
         list of passengers that have reached destination
         """
+        for passenger in self.passengers:
+            self.passengers_served.add(passenger.ID)
 
         to_drop = []
         if self.distance_next_node <= 0:
@@ -173,9 +175,15 @@ class Bus:
         )
         self.distance_next_node -= self.speed * self.step_interval
         self.total_distance_traversed += self.speed * self.step_interval
-        self.num_passengers_served += len(to_drop)
 
         for passenger in self.passengers:
             passenger.travel_time += self.analysis_period_sec
 
         return to_drop
+
+    @property
+    def num_passengers(self) -> int:
+        """
+        Returns the number of served passengers
+        """
+        return len(self.passengers_served)

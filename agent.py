@@ -63,8 +63,15 @@ class GATv2FeatureExtractor(nn.Module):
     ):
         super().__init__()
 
+        self.mlp = nn.Sequential(
+            nn.Linear(in_channels, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+        )
+
         self.gat1 = GATv2Conv(
-            in_channels=in_channels,
+            in_channels=hidden_dim,
             out_channels=hidden_dim,
             heads=num_heads,
             concat=True,
@@ -116,6 +123,7 @@ class GATv2FeatureExtractor(nn.Module):
         if torch.isnan(edge_index).any():
             print("Found NaNs in obs.edge_index")
 
+        x = self.mlp(x)
         x = self.process_for_gat(self.gat1, x, edge_index, edge_attr)
         x = torch.relu(x)
         x = self.dropout(x)

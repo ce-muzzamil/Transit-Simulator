@@ -488,7 +488,6 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
             break
     
     good_buses  = 0
-    doc_good_buses = set()
     for agent_id in obs_buf.keys():
         T = len(reward_buf[agent_id])
 
@@ -496,10 +495,9 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
             current_time = info_buf[agent_id][t]["current_time"]
             additional_reward = 0
             for i in range(t, T):
-                buses = info_buf[agent_id][i]["retired_buses"]
-                for bus in buses:
+                retired_buses = info_buf[agent_id][i]["retired_buses"]
+                for bus in retired_buses:
                     if bus.num_passengers_served/bus.capacity > 0.10:
-                        doc_good_buses.add(bus.ID)
                         if bus.created_at == current_time:
                             additional_reward += 1000
                             break
@@ -510,7 +508,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
 
     if num_killed > 0:
         print(f"Killed {num_killed}/{len(env.possible_agents)} agents at step {int(step_count/num_killed)}.")        
-    print(f"num_good_buses: {good_buses}/{sum(([sum(i) for i in action_buf.values()]))}/{len(doc_good_buses)}")
+    print(f"num_good_buses: {good_buses}/{sum(([sum(i) for i in action_buf.values()]))}")
 
     return (
         obs_buf,

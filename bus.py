@@ -182,7 +182,7 @@ class Bus:
         return to_drop
 
     @property
-    def num_passengers(self) -> int:
+    def num_passengers_served(self) -> int:
         """
         Returns the number of served passengers
         """

@@ -502,7 +502,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
         for t in reversed(range(T)):
             current_time = info_buf[agent_id][t]["current_time"]
             additional_reward = 0
-            for i in range(t, T):
+            for i in range(0, T):
                 retired_buses = info_buf[agent_id][i]["retired_buses"]
                 for bus in retired_buses:
                     if bus.num_passengers_served/bus.capacity > 0.10:

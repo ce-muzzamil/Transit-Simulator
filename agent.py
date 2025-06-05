@@ -528,10 +528,9 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                 retired_buses = info_buf[agent_id][i]["retired_buses"]
                 for bus in retired_buses:
                     if bus.created_at == current_time:
-                        additional_reward += (
-                            4 * bus.num_passengers_served / bus.capacity
-                        )
-                        break
+                        if bus.num_passengers_served > 3:
+                            additional_reward += 1000
+                            break
 
                 if additional_reward > 0:
                     reward_buf[agent_id][t] += additional_reward
@@ -539,11 +538,11 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                     good_buses += 1
                     break
         
-        if terminated_buf[agent_id][-1]:
-            for i in range(50):
-                if action_buf[agent_id][-i-1] == 0:
-                    reward_buf[agent_id][-i-1] += -10
-                    info_buf[agent_id][-i-1]["reward_type_3"] += -10
+        # if terminated_buf[agent_id][-1]:
+        #     for i in range(50):
+        #         if action_buf[agent_id][-i-1] == 0:
+        #             reward_buf[agent_id][-i-1] += -10
+        #             info_buf[agent_id][-i-1]["reward_type_3"] += -10
 
     if num_killed > 0:
         print(

@@ -8,7 +8,6 @@ from copy import deepcopy
 import itertools
 
 
-
 def to_torch(obs_):
     obs = deepcopy(obs_)
     for k1 in obs:
@@ -329,6 +328,7 @@ class Transformer(nn.Module):
 #         out = torch.mean(out, dim=1)  # N,E
 #         return out
 
+
 class FeatureExtractor(nn.Module):
     def __init__(
         self,
@@ -378,6 +378,7 @@ class FeatureExtractor(nn.Module):
         out = torch.mean(routes_vector, dim=1)  # N,E
         return out
 
+
 class Model(nn.Module):
     def __init__(
         self,
@@ -416,7 +417,15 @@ class Model(nn.Module):
             nn.Linear(embed_size, self.num_actions),
         )
 
-        self.critic = nn.Sequential(
+        self.critic_delayed = nn.Sequential(
+            nn.Linear(embed_size, embed_size),
+            nn.ReLU(),
+            nn.Linear(embed_size, embed_size),
+            nn.ReLU(),
+            nn.Linear(embed_size, 1),
+        )
+
+        self.critic_immediate = nn.Sequential(
             nn.Linear(embed_size, embed_size),
             nn.ReLU(),
             nn.Linear(embed_size, embed_size),
@@ -427,8 +436,11 @@ class Model(nn.Module):
     def forward(self, x):
         embed = self.feature_extractor(x)
         logits = self.actor(embed).squeeze(-1)
-        value = self.critic(embed).squeeze(-1)
-        return logits, value
+        value_immediate, value_delayed = self.critic_immediate(embed).squeeze(
+            -1
+        ), self.critic_delayed(embed).squeeze(-1)
+        return logits, value_immediate, value_delayed
+
 
 def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True):
     obs, _ = env.reset(hard_reset=hard_reset)
@@ -465,21 +477,32 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                 continue
 
             with torch.no_grad():
-                logits, value = model(to_device(obs[agent_id], device=device))
+                logits, value_imm, value_del = model(
+                    to_device(obs[agent_id], device=device)
+                )
             dist = Categorical(logits=logits)
             action = dist.sample()
 
-            obs_buf[agent_id].append(to_device(detach_grads(obs[agent_id]), device="cpu"))
+            obs_buf[agent_id].append(
+                to_device(detach_grads(obs[agent_id]), device="cpu")
+            )
             action_buf[agent_id].append(action.item())
             logp_buf[agent_id].append(dist.log_prob(action).detach().cpu())
-            value_buf[agent_id].append(value.squeeze(-1).detach().cpu())
+            value_buf[agent_id].append(
+                (
+                    value_imm.squeeze(-1).detach().cpu(),
+                    value_del.squeeze(-1).detach().cpu(),
+                )
+            )
 
             actions[agent_id] = action.item()
 
         next_obs, reward, terminated, truncated, info = env.step(actions)
         for agent_id in env.possible_agents:
-            if agent_id not in killed_agents:                
-                reward_buf[agent_id].append(torch.tensor(reward[agent_id], dtype=torch.float32))
+            if agent_id not in killed_agents:
+                reward_buf[agent_id].append(
+                    torch.tensor(reward[agent_id], dtype=torch.float32)
+                )
                 info_buf[agent_id].append(info[agent_id])
                 terminated_buf[agent_id].append(terminated[agent_id])
                 truncated_buf[agent_id].append(truncated[agent_id])
@@ -489,13 +512,13 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                         killed_agents.add(agent_id)
                 if terminated[agent_id]:
                     num_killed += 1
-                    sc += step_count               
-                
+                    sc += step_count
+
         obs = next_obs
         if len(killed_agents) == len(env.possible_agents):
             break
-    
-    good_buses  = 0
+
+    good_buses = 0
     for agent_id in env.possible_agents:
         T = len(reward_buf[agent_id])
         for t in reversed(range(T)):
@@ -505,7 +528,9 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                 retired_buses = info_buf[agent_id][i]["retired_buses"]
                 for bus in retired_buses:
                     if bus.created_at == current_time:
-                        additional_reward += 4 * bus.num_passengers_served/bus.capacity
+                        additional_reward += (
+                            4 * bus.num_passengers_served / bus.capacity
+                        )
                         break
 
                 if additional_reward > 0:
@@ -518,7 +543,9 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
         #     reward_buf[agent_id] = [-10 for _ in reward_buf[agent_id]]
 
     if num_killed > 0:
-        print(f"Killed {num_killed}/{len(env.possible_agents)} agents at step {int(step_count/num_killed)}.")        
+        print(
+            f"Killed {num_killed}/{len(env.possible_agents)} agents at step {int(step_count/num_killed)}."
+        )
     # print(f"num_good_buses: {good_buses}/{sum(([sum(i) for i in action_buf.values()]))}")
 
     return (
@@ -544,7 +571,8 @@ def ppo_update(
     info_buf,
     logp_buf,
     value_buf,
-    gamma=0.995,
+    gamma_imm=0.100,
+    gamma_del=0.995,
     lam=0.95,
     clip_ratio=0.2,
     entropy_coef=0.01,
@@ -557,28 +585,51 @@ def ppo_update(
     policy_losses, value_losses = [], []
 
     for agent_id in obs_buf.keys():
-        done_buf = [t or tr for t, tr in zip(terminated_buf[agent_id], truncated_buf[agent_id])]
+        done_buf = [
+            t or tr for t, tr in zip(terminated_buf[agent_id], truncated_buf[agent_id])
+        ]
         T = len(reward_buf[agent_id])
-        last_value = 0.0
-        returns, advs = [], []
-        gae = 0.0
+        returns_imm, advs_imm = [], []
+        returns_del, advs_del = [], []
+        gae_imm = 0.0
+        gae_del = 0.0
         for t in reversed(range(T)):
-            next_value = last_value if t == T - 1 else value_buf[agent_id][t + 1]
             next_non_terminal = 1.0 - float(done_buf[t])
-            
-            delta = reward_buf[agent_id][t] + gamma * next_value * next_non_terminal - value_buf[agent_id][t]
-            gae = delta + gamma * lam * next_non_terminal * gae
 
-            advs.insert(0, gae)
-            returns.insert(0, gae + value_buf[agent_id][t])
+            next_value_imm = 0.0 if t == T - 1 else value_buf[agent_id][t + 1][0]
+            delta_imm = (
+                info_buf[agent_id][t]["reward_type_3"]
+                + gamma_imm * next_value_imm * next_non_terminal
+                - value_buf[agent_id][t][0]
+            )
+            gae_imm = delta_imm + gamma_imm * lam * next_non_terminal * gae_imm
+            advs_imm.insert(0, gae_imm)
+            returns_imm.insert(0, gae_imm + value_buf[agent_id][t][0])
 
-        advs = torch.tensor(advs, dtype=torch.float32, device=device)
-        advs = (advs - advs.mean()) / (advs.std() + 1e-8)  # Normalize advantages
-        returns = torch.tensor(returns, dtype=torch.float32, device=device)
-        old_logps = torch.stack(logp_buf[agent_id]).to(device)
+            next_value_del = 0.0 if t == T - 1 else value_buf[agent_id][t + 1][1]
+            delta_del = (
+                info_buf[agent_id][t]["reward_type_2"]
+                + gamma_del * next_value_del * next_non_terminal
+                - value_buf[agent_id][t][1]
+            )
+            gae_del = delta_del + gamma_del * lam * next_non_terminal * gae_del
+            advs_del.insert(0, gae_del)
+            returns_del.insert(0, gae_del + value_buf[agent_id][t][1])
+
+        advs_imm, advs_del = (
+            torch.tensor(advs_imm, dtype=torch.float32, device=device),
+            torch.tensor(advs_del, dtype=torch.float32, device=device),
+        )
+
+        advs = advs_imm + advs_del
+        advs = (advs - advs.mean()) / (advs.std() + 1e-8)
+
+        returns_imm, returns_del = (torch.tensor(returns_imm, dtype=torch.float32, device=device),
+                                    torch.tensor(returns_del, dtype=torch.float32, device=device))
         
-        indices = torch.randperm(T)
+        old_logps = torch.stack(logp_buf[agent_id]).to(device)
 
+        indices = torch.randperm(T)
         for epoch in range(epochs):
             epoch_policy_loss = 0.0
             epoch_value_loss = 0.0
@@ -586,35 +637,44 @@ def ppo_update(
             num_batches = 0
 
             for i in range(0, T, batch_size):
-                batch_indices = indices[i:i + batch_size]
+                batch_indices = indices[i : i + batch_size]
 
                 obs_batch_list = [obs_buf[agent_id][idx] for idx in batch_indices]
                 obs_batch = batch_obs(obs_batch_list)
                 obs_batch = to_device(obs_batch, device=device)
 
-                logits, new_values = model(obs_batch)
+                logits, new_values_imm, new_values_del = model(obs_batch)
                 dist = Categorical(logits=logits)
                 entropy = dist.entropy().mean()
 
-                actions = torch.tensor([action_buf[agent_id][idx] for idx in batch_indices], device=device)
+                actions = torch.tensor(
+                    [action_buf[agent_id][idx] for idx in batch_indices], device=device
+                )
                 new_logp = dist.log_prob(actions)
                 old_logp = old_logps[batch_indices]
 
                 adv_batch = advs[batch_indices]
                 ratio = torch.exp(new_logp - old_logp)
                 surr1 = ratio * adv_batch
-                surr2 = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * adv_batch
+                surr2 = (
+                    torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * adv_batch
+                )
                 policy_loss = -torch.min(surr1, surr2).mean()
 
-                ret_batch = returns[batch_indices]
-                v_pred = new_values.squeeze(-1)
-                value_loss = F.mse_loss(v_pred, ret_batch)
+                ret_batch_imm = returns_imm[batch_indices]
+                ret_batch_del = returns_del[batch_indices]
 
+                v_pred_imm = new_values_imm.squeeze(-1)
+                value_loss_imm = F.mse_loss(v_pred_imm, ret_batch_imm)
+
+                v_pred_del = new_values_del.squeeze(-1)
+                value_loss_del = F.mse_loss(v_pred_del, ret_batch_del)
+                value_loss = value_loss_imm + value_loss_del
+                
                 optimizer.zero_grad()
                 (policy_loss - entropy_coef * entropy + value_loss * vf_coef).backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
+                # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
                 optimizer.step()
-
 
                 epoch_policy_loss += policy_loss.item()
                 epoch_value_loss += value_loss.item()
@@ -626,9 +686,14 @@ def ppo_update(
                 with torch.no_grad():
                     sample_size = min(64, T)
                     sample_indices = torch.randperm(T)[:sample_size]
-                    sample_obs = batch_obs([obs_buf[agent_id][idx] for idx in sample_indices])
+                    sample_obs = batch_obs(
+                        [obs_buf[agent_id][idx] for idx in sample_indices]
+                    )
                     sample_obs = to_device(sample_obs, device=device)
-                    sample_actions = torch.tensor([action_buf[agent_id][idx] for idx in sample_indices], device=device)
+                    sample_actions = torch.tensor(
+                        [action_buf[agent_id][idx] for idx in sample_indices],
+                        device=device,
+                    )
 
                     new_logits, _ = model(sample_obs)
                     new_dist = Categorical(logits=new_logits)

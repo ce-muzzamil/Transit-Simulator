@@ -541,9 +541,9 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
         
         if terminated_buf[agent_id][-1]:
             if sum(action_buf[agent_id][-60:])==0:
-                for i in range(30):
+                for i in range(50):
                     reward_buf[agent_id][-i-1] = -1
-                    info_buf[agent_id][t]["reward_type_3"] += -10
+                    info_buf[agent_id][t]["reward_type_3"] += -1000
 
     if num_killed > 0:
         print(
@@ -609,8 +609,8 @@ def ppo_update(
             advs_imm.insert(0, gae_imm)
             returns_imm.insert(0, gae_imm + value_buf[agent_id][t][0])
             
+
             next_value_del = 0.0 if t == T - 1 else value_buf[agent_id][t + 1][1]
-            
             if action_buf[agent_id][t] == 0:
                 delta_del = (
                     info_buf[agent_id][t]["reward_type_2"]

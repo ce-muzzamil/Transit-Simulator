@@ -510,6 +510,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
 
                 if additional_reward > 0:
                     reward_buf[agent_id][t] += additional_reward
+                    info_buf[agent_id][t]["reward_type_3"] += additional_reward
                     good_buses += 1
                     break
 
@@ -558,37 +559,21 @@ def ppo_update(
     for agent_id in obs_buf.keys():
         done_buf = [t or tr for t, tr in zip(terminated_buf[agent_id], truncated_buf[agent_id])]
         T = len(reward_buf[agent_id])
-
-        # Bootstrap value
-        if T > 0:
-            if done_buf[-1]:
-                last_value = 0.0
-            else:
-                with torch.no_grad():
-                    final_obs = to_device(obs_buf[agent_id][-1], device=device)
-                    if final_obs.dim() == 1:
-                        final_obs = final_obs.unsqueeze(0)
-                    _, last_value_tensor = model(final_obs)
-                    last_value = last_value_tensor.squeeze(-1).item()
-        else:
-            last_value = 0.0
-
-        # Compute GAE and returns
+        last_value = 0.0
         returns, advs = [], []
         gae = 0.0
         for t in reversed(range(T)):
             next_value = last_value if t == T - 1 else value_buf[agent_id][t + 1]
             next_non_terminal = 1.0 - float(done_buf[t])
-            if action_buf[agent_id][t] == 0:
-                delta = reward_buf[agent_id][t] + gamma * next_value * next_non_terminal - value_buf[agent_id][t]
-            else:
-                delta = reward_buf[agent_id][t] - value_buf[agent_id][t]
+            
+            delta = reward_buf[agent_id][t] + gamma * next_value * next_non_terminal - value_buf[agent_id][t]
             gae = delta + gamma * lam * next_non_terminal * gae
+
             advs.insert(0, gae)
             returns.insert(0, gae + value_buf[agent_id][t])
 
         advs = torch.tensor(advs, dtype=torch.float32, device=device)
-        # advs = (advs - advs.mean()) / (advs.std() + 1e-8)  # Normalize advantages
+        advs = (advs - advs.mean()) / (advs.std() + 1e-8)  # Normalize advantages
         returns = torch.tensor(returns, dtype=torch.float32, device=device)
         old_logps = torch.stack(logp_buf[agent_id]).to(device)
         

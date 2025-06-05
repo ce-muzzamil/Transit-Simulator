@@ -677,7 +677,7 @@ def ppo_update(
                 value_loss_imm = F.mse_loss(v_pred_imm, ret_batch_imm)
 
                 v_pred_del = new_values_del.squeeze(-1)
-                value_loss_del = F.mse_loss(v_pred_del, ret_batch_del)
+                value_loss_del = F.mse_loss(v_pred_del.squeeze(), ret_batch_del.squeeze())
                 value_loss = value_loss_imm + value_loss_del
                 
                 optimizer.zero_grad()

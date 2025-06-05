@@ -695,7 +695,7 @@ def ppo_update(
                         device=device,
                     )
 
-                    new_logits, _ = model(sample_obs)
+                    new_logits, _, _ = model(sample_obs)
                     new_dist = Categorical(logits=new_logits)
                     new_logp = new_dist.log_prob(sample_actions)
                     old_logp_sample = old_logps[sample_indices]

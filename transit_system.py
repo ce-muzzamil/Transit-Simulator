@@ -100,7 +100,8 @@ class TransitSystem:
                 self.add_bus_on_route(route_id, reversed=False)
                 self.add_bus_on_route(route_id, reversed=True)
         
-        self.retired_buses = []
+        self.retired_buses = set()
+        self.step_retired_buses = set()
 
     def add_bus_on_route(self, route_id: int, reversed: bool, time: int):
         """
@@ -175,10 +176,12 @@ class TransitSystem:
         for bus in self.buses:
             if bus.done:
                 to_drop.append(bus)
+                self.step_retired_buses.add(bus)
+                self.retired_buses.add(bus)
 
         for bus in to_drop:
             if bus in self.buses:
                 self.buses.remove(bus)
-                self.retired_buses.append(bus)
-                self.num_buses_done += 1
+
+        self.num_buses_done += len(to_drop)
         

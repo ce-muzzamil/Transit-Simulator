@@ -103,8 +103,9 @@ class Node:
         self.avg_stranding_counts_0 = 0
         self.avg_stranding_counts_1 = 0
         
-
+        self.bus_arrivals: list[int] = []
         self.zone_type_id = {k:e for e, k in enumerate(["school", "office", "shopping", "residentials"])}[self.zone_type]
+
 
     def check_transfers(self, destination: Self) -> list[Self]:
         """
@@ -259,6 +260,8 @@ class Node:
             self.time_of_last_bus_0 = time
         else:
             self.time_of_last_bus_1 = time
+        
+        self.bus_arrivals.append(time)
         return to_drop
 
     def distance_to_exit_nodes(self):

@@ -345,7 +345,7 @@ class TransitNetworkEnv:
         ) >= self.hours_of_opperation_per_day * 3600:
             self.current_day += 1
             self.current_time = 0
-            obs, _ = self.reset(hard_reset=False)
+            # obs, _ = self.reset(hard_reset=False)
         else:
             self.current_time = self.current_time + self.analysis_period_sec
 
@@ -466,14 +466,15 @@ class TransitNetworkEnv:
 
             reward = reward_3 + reward_2
 
-            buses = [bus for bus in self.transit_system.retired_buses if bus.service_route == route_id and bus.reversed == is_reversed]
+            buses = [bus for bus in self.transit_system.step_retired_buses if bus.service_route == route_id and bus.reversed == is_reversed]
+            
             # if len(buses) > 0:
             #     utilzed_bus_capacity = [bus.num_passengers_served/bus.capacity for bus in buses]
             #     high_utilzation_reward = sum([i>0.25 for i in utilzed_bus_capacity]) * 5
                 # reward += high_utilzation_reward
 
-            for bus in self.transit_system.retired_buses:
-                self.transit_system.retired_buses.remove(bus)
+            # for bus in self.transit_system.retired_buses:
+            #     self.transit_system.retired_buses.remove(bus)
 
             reward_info = {
                 "reward_type_2": reward_2,
@@ -487,6 +488,7 @@ class TransitNetworkEnv:
             rewards_info[agent_id] = reward_info
 
         # pd.DataFrame(rewards_info.values()).mean().to_dict()
+        self.transit_system.step_retired_buses = set()
         return rewards, rewards_info
 
     def render(self):

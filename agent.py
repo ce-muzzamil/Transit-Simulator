@@ -496,18 +496,17 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
             break
     
     good_buses  = 0
-    for agent_id in obs_buf.keys():
+    for agent_id in env.possible_agents:
         T = len(reward_buf[agent_id])
-
         for t in reversed(range(T)):
             current_time = info_buf[agent_id][t]["current_time"]
             additional_reward = 0
             for i in range(t, T):
                 retired_buses = info_buf[agent_id][i]["retired_buses"]
                 for bus in retired_buses:
-                    if bus.num_passengers_served>0:
+                    if bus.num_passengers_served/bus.capacity>0.1:
                         if bus.created_at == current_time:
-                            additional_reward += 2000
+                            additional_reward += 1000
                             break
                 if additional_reward > 0:
                     reward_buf[agent_id][t] = additional_reward

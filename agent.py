@@ -544,7 +544,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
 
     if num_killed > 0:
         print(
-            f"Killed {num_killed}/{len(env.possible_agents)} agents at step {int(step_count/num_killed)}."
+            f"Killed {num_killed}/{len(env.possible_agents)} agents at step {int(sc/num_killed)}."
         )
     # print(f"num_good_buses: {good_buses}/{sum(([sum(i) for i in action_buf.values()]))}")
 

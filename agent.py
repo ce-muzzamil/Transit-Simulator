@@ -542,8 +542,8 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
         if terminated_buf[agent_id][-1]:
             if sum(action_buf[agent_id][-60:])==0:
                 for i in range(50):
-                    reward_buf[agent_id][-i-1] = -1
-                    info_buf[agent_id][t]["reward_type_3"] += -1000
+                    reward_buf[agent_id][-i-1] = -10
+                    info_buf[agent_id][-i-1]["reward_type_3"] += -10
 
     if num_killed > 0:
         print(

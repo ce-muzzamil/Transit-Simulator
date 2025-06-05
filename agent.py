@@ -539,9 +539,6 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                     good_buses += 1
                     break
 
-        # if sum(action_buf[agent_id]) == 0:
-        #     reward_buf[agent_id] = [-10 for _ in reward_buf[agent_id]]
-
     if num_killed > 0:
         print(
             f"Killed {num_killed}/{len(env.possible_agents)} agents at step {int(sc/num_killed)}."
@@ -618,7 +615,8 @@ def ppo_update(
                 advs_del.insert(0, gae_del)
                 returns_del.insert(0, gae_del + value_buf[agent_id][t][1])
             else:
-                advs_del.insert(0, 0)
+                delta_del = 0 - value_buf[agent_id][t][1]
+                advs_del.insert(0, delta_del)
                 returns_del.insert(0, 0)
 
         advs_imm, advs_del = (

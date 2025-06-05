@@ -44,7 +44,7 @@ class Bus:
         self.total_distance_traversed = 0
         self.passengers_served = set()
         self.analysis_period_sec = analysis_period_sec
-        self.created_at = 0
+        self.created_at = created_at
 
         self.topology = topology
         nodes_ids = [

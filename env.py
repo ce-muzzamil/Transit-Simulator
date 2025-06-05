@@ -449,7 +449,7 @@ class TransitNetworkEnv:
             else:
                 avg_stranding_count = 0  # counts
 
-            # reward_2 = 0
+            reward_2 = 0
             reward_2 -= avg_waiting_time / 60.0
 
             # if avg_stranding_count > 0 and action == 0:

@@ -579,7 +579,7 @@ def ppo_update(
         for t in reversed(range(T)):
             next_value = last_value if t == T - 1 else value_buf[agent_id][t + 1]
             next_non_terminal = 1.0 - float(done_buf[t])
-            if reward_buf[agent_id][t] != 100:
+            if reward_buf[agent_id][t] < 0:
                 delta = reward_buf[agent_id][t] + gamma * next_value * next_non_terminal - value_buf[agent_id][t]
             else:
                 delta = reward_buf[agent_id][t] - value_buf[agent_id][t]

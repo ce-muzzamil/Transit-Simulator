@@ -618,9 +618,9 @@ def ppo_update(
                 advs_imm.insert(0, gae_imm)
                 returns_imm.insert(0, gae_imm + value_buf[agent_id][t][0])
             else:
-                delta_del = 0 - value_buf[agent_id][t][0]
-                advs_del.insert(0, delta_del)
-                returns_del.insert(0, 0)
+                delta_imm = 0 - value_buf[agent_id][t][0]
+                advs_imm.insert(0, delta_del)
+                returns_imm.insert(0, 0)
             
             next_value_del = 0.0 if t == T - 1 else value_buf[agent_id][t + 1][1]
             if action_buf[agent_id][t] == 0:

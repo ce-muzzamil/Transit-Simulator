@@ -531,9 +531,9 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                         if bus.num_passengers_served/bus.capacity > 0.90:
                             additional_reward += 10
                         elif bus.num_passengers_served/bus.capacity > 0.50:
-                            additional_reward += 2
+                            additional_reward += 1.5
                         elif bus.num_passengers_served/bus.capacity > 0.25:
-                            additional_reward += 0.4
+                            additional_reward += 0.25
                         elif bus.num_passengers_served/bus.capacity > 0.10:
                             additional_reward -= 0.0
                         elif bus.num_passengers_served/bus.capacity > 0.0:
@@ -608,21 +608,22 @@ def ppo_update(
             next_non_terminal = 1.0 - float(done_buf[t])
 
             next_value_imm = 0.0 if t == T - 1 else value_buf[agent_id][t + 1][0]
-            if action_buf[agent_id][t] == 1:
-                delta_imm = (
-                    info_buf[agent_id][t]["reward_type_3"]
-                    + gamma_imm * next_value_imm * next_non_terminal
-                    - value_buf[agent_id][t][0]
-                )
-                gae_imm = delta_imm + gamma_imm * lam * next_non_terminal * gae_imm
-                advs_imm.insert(0, gae_imm)
-                returns_imm.insert(0, gae_imm + value_buf[agent_id][t][0])
-            else:
-                delta_imm = 0 - value_buf[agent_id][t][0]
-                advs_imm.insert(0, delta_imm)
-                returns_imm.insert(0, 0)
+            # if action_buf[agent_id][t] == 1:
+            delta_imm = (
+                info_buf[agent_id][t]["reward_type_3"]
+                + gamma_imm * next_value_imm * next_non_terminal
+                - value_buf[agent_id][t][0]
+            )
+            gae_imm = delta_imm + gamma_imm * lam * next_non_terminal * gae_imm
+            advs_imm.insert(0, gae_imm)
+            returns_imm.insert(0, gae_imm + value_buf[agent_id][t][0])
+            # else:
+            #     delta_imm = 0 - value_buf[agent_id][t][0]
+            #     advs_imm.insert(0, delta_imm)
+            #     returns_imm.insert(0, 0)
             
             next_value_del = 0.0 if t == T - 1 else value_buf[agent_id][t + 1][1]
+            
             if action_buf[agent_id][t] == 0:
                 delta_del = (
                     info_buf[agent_id][t]["reward_type_2"]

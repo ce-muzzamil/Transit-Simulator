@@ -531,13 +531,13 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                         if bus.num_passengers_served/bus.capacity > 0.90:
                             additional_reward += 10
                         elif bus.num_passengers_served/bus.capacity > 0.50:
-                            additional_reward += 5
+                            additional_reward += 2
                         elif bus.num_passengers_served/bus.capacity > 0.25:
-                            additional_reward += 1
+                            additional_reward += 0.4
                         elif bus.num_passengers_served/bus.capacity > 0.10:
-                            additional_reward -= 1
+                            additional_reward -= 0.0
                         elif bus.num_passengers_served/bus.capacity > 0.0:
-                            additional_reward -= 5
+                            additional_reward -= 1
                         else:
                             additional_reward -= 10
                         

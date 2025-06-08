@@ -546,12 +546,7 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
                     info_buf[agent_id][t]["reward_type_3"] += additional_reward
                     good_buses += 1
                     break
-        
-        # if terminated_buf[agent_id][-1]:
-        #     for i in range(50):
-        #         if action_buf[agent_id][-i-1] == 0:
-        #             reward_buf[agent_id][-i-1] += -10
-        #             info_buf[agent_id][-i-1]["reward_type_3"] += -10
+
 
     if num_killed > 0:
         print(

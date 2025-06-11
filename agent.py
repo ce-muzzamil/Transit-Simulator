@@ -441,21 +441,20 @@ class Model(nn.Module):
         ), self.critic_delayed(embed).squeeze(-1)
         return logits, value_immediate, value_delayed
 
+
 def fixed_policy(interval):
     def wrapped(time_step):
         if time_step % interval == 0:
             return 1
         else:
             return 0
+
     return wrapped
 
-def collect_rollout(env, 
-                    model, 
-                    rollout_len=1080, 
-                    device="cpu", 
-                    hard_reset=True,
-                    testing=False
-                    ):
+
+def collect_rollout(
+    env, model, rollout_len=1080, device="cpu", hard_reset=True, testing=False
+):
     obs, _ = env.reset(hard_reset=hard_reset)
     (
         obs_buf,
@@ -488,17 +487,25 @@ def collect_rollout(env,
             if agent_id in killed_agents:
                 actions[agent_id] = 0
                 continue
-            
+
             if isinstance(model, nn.Module):
                 with torch.no_grad():
                     logits, value_imm, value_del = model(
                         to_device(obs[agent_id], device=device)
+                    )
+                    value_buf[agent_id].append(
+                        (
+                            value_imm.squeeze(-1).detach().cpu(),
+                            value_del.squeeze(-1).detach().cpu(),
+                        )
                     )
 
                 if not testing:
                     dist = Categorical(logits=logits)
                     action = dist.sample()
                     logp_buf[agent_id].append(dist.log_prob(action).detach().cpu())
+                    action = action.item()
+
                 else:
                     action = torch.argmax(logits, dim=-1)
             else:
@@ -507,15 +514,9 @@ def collect_rollout(env,
             obs_buf[agent_id].append(
                 to_device(detach_grads(obs[agent_id]), device="cpu")
             )
-            action_buf[agent_id].append(action.item())
-            value_buf[agent_id].append(
-                (
-                    value_imm.squeeze(-1).detach().cpu(),
-                    value_del.squeeze(-1).detach().cpu(),
-                )
-            )
+            action_buf[agent_id].append(action)
 
-            actions[agent_id] = action.item()
+            actions[agent_id] = action
 
         next_obs, reward, terminated, truncated, info = env.step(actions)
         for agent_id in env.possible_agents:
@@ -548,25 +549,24 @@ def collect_rollout(env,
                 retired_buses = info_buf[agent_id][i]["retired_buses"]
                 for bus in retired_buses:
                     if bus.created_at == current_time:
-                        if bus.num_passengers_served/bus.capacity > 0.90:
+                        if bus.num_passengers_served / bus.capacity > 0.90:
                             additional_reward += 10
-                        elif bus.num_passengers_served/bus.capacity > 0.50:
+                        elif bus.num_passengers_served / bus.capacity > 0.50:
                             additional_reward += 1.5
-                        elif bus.num_passengers_served/bus.capacity > 0.25:
+                        elif bus.num_passengers_served / bus.capacity > 0.25:
                             additional_reward += 0.25
-                        elif bus.num_passengers_served/bus.capacity > 0.10:
+                        elif bus.num_passengers_served / bus.capacity > 0.10:
                             additional_reward -= 0.0
-                        elif bus.num_passengers_served/bus.capacity > 0.0:
+                        elif bus.num_passengers_served / bus.capacity > 0.0:
                             additional_reward -= 1
                         else:
                             additional_reward -= 10
-                        
+
                 if additional_reward > 0:
                     reward_buf[agent_id][t] += additional_reward
                     info_buf[agent_id][t]["reward_type_3"] += additional_reward
                     good_buses += 1
                     break
-
 
     if num_killed > 0:
         print(
@@ -635,9 +635,9 @@ def ppo_update(
             #     delta_imm = 0 - value_buf[agent_id][t][0]
             #     advs_imm.insert(0, delta_imm)
             #     returns_imm.insert(0, 0)
-            
+
             next_value_del = 0.0 if t == T - 1 else value_buf[agent_id][t + 1][1]
-            
+
             if action_buf[agent_id][t] == 0:
                 delta_del = (
                     info_buf[agent_id][t]["reward_type_2"]
@@ -660,9 +660,11 @@ def ppo_update(
         advs = advs_imm + advs_del
         # advs = (advs - advs.mean()) / (advs.std() + 1e-8)
 
-        returns_imm, returns_del = (torch.tensor(returns_imm, dtype=torch.float32, device=device),
-                                    torch.tensor(returns_del, dtype=torch.float32, device=device))
-        
+        returns_imm, returns_del = (
+            torch.tensor(returns_imm, dtype=torch.float32, device=device),
+            torch.tensor(returns_del, dtype=torch.float32, device=device),
+        )
+
         old_logps = torch.stack(logp_buf[agent_id]).to(device)
 
         indices = torch.randperm(T)
@@ -704,9 +706,11 @@ def ppo_update(
                 value_loss_imm = F.mse_loss(v_pred_imm, ret_batch_imm)
 
                 v_pred_del = new_values_del.squeeze(-1)
-                value_loss_del = F.mse_loss(v_pred_del.squeeze(), ret_batch_del.squeeze())
+                value_loss_del = F.mse_loss(
+                    v_pred_del.squeeze(), ret_batch_del.squeeze()
+                )
                 value_loss = value_loss_imm + value_loss_del
-                
+
                 optimizer.zero_grad()
                 (policy_loss - entropy_coef * entropy + value_loss * vf_coef).backward()
                 # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)

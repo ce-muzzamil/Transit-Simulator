@@ -658,7 +658,7 @@ def ppo_update(
         )
 
         advs = advs_imm + advs_del
-        # advs = (advs - advs.mean()) / (advs.std() + 1e-8)
+        advs = (advs - advs.mean()) / (advs.std() + 1e-8)
 
         returns_imm, returns_del = (
             torch.tensor(returns_imm, dtype=torch.float32, device=device),

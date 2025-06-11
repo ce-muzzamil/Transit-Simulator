@@ -441,8 +441,21 @@ class Model(nn.Module):
         ), self.critic_delayed(embed).squeeze(-1)
         return logits, value_immediate, value_delayed
 
+def fixed_policy(interval):
+    def wrapped(time_step):
+        if time_step % interval == 0:
+            return 1
+        else:
+            return 0
+    return wrapped
 
-def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True):
+def collect_rollout(env, 
+                    model, 
+                    rollout_len=1080, 
+                    device="cpu", 
+                    hard_reset=True,
+                    testing=False
+                    ):
     obs, _ = env.reset(hard_reset=hard_reset)
     (
         obs_buf,
@@ -475,19 +488,26 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
             if agent_id in killed_agents:
                 actions[agent_id] = 0
                 continue
+            
+            if isinstance(model, nn.Module):
+                with torch.no_grad():
+                    logits, value_imm, value_del = model(
+                        to_device(obs[agent_id], device=device)
+                    )
 
-            with torch.no_grad():
-                logits, value_imm, value_del = model(
-                    to_device(obs[agent_id], device=device)
-                )
-            dist = Categorical(logits=logits)
-            action = dist.sample()
+                if not testing:
+                    dist = Categorical(logits=logits)
+                    action = dist.sample()
+                    logp_buf[agent_id].append(dist.log_prob(action).detach().cpu())
+                else:
+                    action = torch.argmax(logits, dim=-1)
+            else:
+                action = model(env.current_time)
 
             obs_buf[agent_id].append(
                 to_device(detach_grads(obs[agent_id]), device="cpu")
             )
             action_buf[agent_id].append(action.item())
-            logp_buf[agent_id].append(dist.log_prob(action).detach().cpu())
             value_buf[agent_id].append(
                 (
                     value_imm.squeeze(-1).detach().cpu(),
@@ -552,7 +572,6 @@ def collect_rollout(env, model, rollout_len=1080, device="cpu", hard_reset=True)
         print(
             f"Killed {num_killed}/{len(env.possible_agents)} agents at step {int(sc/num_killed)}."
         )
-    # print(f"num_good_buses: {good_buses}/{sum(([sum(i) for i in action_buf.values()]))}")
 
     return (
         obs_buf,

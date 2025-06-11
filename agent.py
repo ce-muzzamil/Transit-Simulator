@@ -552,13 +552,13 @@ def collect_rollout(
                         if bus.num_passengers_served / bus.capacity > 0.90:
                             additional_reward += 100
                         elif bus.num_passengers_served / bus.capacity > 0.50:
-                            additional_reward += 2
+                            additional_reward += 10
                         elif bus.num_passengers_served / bus.capacity > 0.25:
-                            additional_reward += 0.75
+                            additional_reward += 1
                         elif bus.num_passengers_served / bus.capacity > 0.10:
-                            additional_reward += 0.50
+                            additional_reward += 0.1
                         elif bus.num_passengers_served / bus.capacity > 0.0:
-                            additional_reward += 0.25
+                            additional_reward += 0.01
                         else:
                             additional_reward += 0.0
 
@@ -586,6 +586,7 @@ def collect_rollout(
 
     mean_of_action_0 = sum(mean_of_action_0) / len(mean_of_action_0) if mean_of_action_0 else 0.0
     mean_of_action_1 = sum(mean_of_action_1) / len(mean_of_action_1) if mean_of_action_1 else 0.0
+
     print(f"Mean of action 0: {mean_of_action_0:.2f}, Mean of action 1: {mean_of_action_1:.2f}")
 
     return (

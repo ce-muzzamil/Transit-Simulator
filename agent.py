@@ -573,8 +573,19 @@ def collect_rollout(
             f"Killed {num_killed}/{len(env.possible_agents)} agents at step {int(sc/num_killed)}."
         )
     
-    mean_of_action_0 = np.mean([np.mean([r for r, a in zip(agent_rewards, agent_actions) if a==0]) for agent_rewards, agent_actions in zip(action_buf.values(), reward_buf.values())])
-    mean_of_action_1 = np.mean([np.mean([r for r, a in zip(agent_rewards, agent_actions) if a==1]) for agent_rewards, agent_actions in zip(action_buf.values(), reward_buf.values())])
+    mean_of_action_0 = []
+    mean_of_action_1 = []
+    for agent_id in env.possible_agents:
+        agent_actions = action_buf[agent_id]
+        agent_rewards = reward_buf[agent_id]
+        for r, a in zip(agent_rewards, agent_actions):
+            if a == 0:
+                mean_of_action_0.append(r)
+            elif a == 1:
+                mean_of_action_1.append(r)
+
+    mean_of_action_0 = sum(mean_of_action_0) / len(mean_of_action_0) if mean_of_action_0 else 0.0
+    mean_of_action_1 = sum(mean_of_action_1) / len(mean_of_action_1) if mean_of_action_1 else 0.0
     print(f"Mean of action 0: {mean_of_action_0:.2f}, Mean of action 1: {mean_of_action_1:.2f}")
 
     return (

@@ -572,6 +572,10 @@ def collect_rollout(
         print(
             f"Killed {num_killed}/{len(env.possible_agents)} agents at step {int(sc/num_killed)}."
         )
+    
+    mean_of_action_0 = np.mean([np.mean([r for r, a in zip(agent_rewards, agent_actions) if a==0]) for agent_rewards, agent_actions in zip(action_buf.values(), reward_buf.values())])
+    mean_of_action_1 = np.mean([np.mean([r for r, a in zip(agent_rewards, agent_actions) if a==1]) for agent_rewards, agent_actions in zip(action_buf.values(), reward_buf.values())])
+    print(f"Mean of action 0: {mean_of_action_0:.2f}, Mean of action 1: {mean_of_action_1:.2f}")
 
     return (
         obs_buf,
@@ -694,9 +698,8 @@ def ppo_update(
                 adv_batch = advs[batch_indices]
                 ratio = torch.exp(new_logp - old_logp)
                 surr1 = ratio * adv_batch
-                surr2 = (
-                    torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * adv_batch
-                )
+                surr2 = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio) * adv_batch
+                
                 policy_loss = -torch.min(surr1, surr2).mean()
 
                 ret_batch_imm = returns_imm[batch_indices]

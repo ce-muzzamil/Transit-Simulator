@@ -61,30 +61,21 @@ class GATv2FeatureExtractor(nn.Module):
 
         self.gat1 = GATv2Conv(
             in_channels=hidden_dim,
+            out_channels=hidden_dim,
+            heads=num_heads,
+            concat=True,
+            edge_dim=edge_dim,
+            dropout=dropout_rate,
+        )
+
+        self.gat2 = GATv2Conv(
+            in_channels=hidden_dim * num_heads,
             out_channels=out_dim,
             heads=1,
             concat=True,
             edge_dim=edge_dim,
             dropout=dropout_rate,
         )
-
-        # self.gat1 = GATv2Conv(
-        #     in_channels=hidden_dim,
-        #     out_channels=hidden_dim,
-        #     heads=num_heads,
-        #     concat=True,
-        #     edge_dim=edge_dim,
-        #     dropout=dropout_rate,
-        # )
-
-        # self.gat2 = GATv2Conv(
-        #     in_channels=hidden_dim * num_heads,
-        #     out_channels=out_dim,
-        #     heads=1,
-        #     concat=True,
-        #     edge_dim=edge_dim,
-        #     dropout=dropout_rate,
-        # )
 
         self.dropout = nn.Dropout(0.1)
 
@@ -115,11 +106,11 @@ class GATv2FeatureExtractor(nn.Module):
             
         x = self.mlp(x)
         x = self.process_for_gat(self.gat1, x, edge_index, edge_attr)
-        # x = torch.relu(x)
-        # x = self.dropout(x)
+        x = F.relu(x)
+        x = self.dropout(x)
 
-        # x = self.process_for_gat(self.gat2, x, edge_index, edge_attr)
-        # x = torch.relu(x)
+        x = self.process_for_gat(self.gat2, x, edge_index, edge_attr)
+        x = F.relu(x)
         return x
 
 

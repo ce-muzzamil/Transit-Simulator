@@ -325,10 +325,10 @@ class Topology:
             1, 0.1, y[p[4] * 3600 : self.hours_of_opperation_per_day * 3600].shape[0]
         )
 
-        y = pd.Series(y).rolling(3600).mean().values * 0.0 + 1.0
+        y = pd.Series(y).rolling(3600).mean().values
         mask = np.isnan(y)
         y[mask] = np.linspace(0.1, y[~mask][0], mask.sum())
-        return y
+        return y * 0.0 + 1.0
 
     def initiallize_traffic_data(self) -> None:
         """

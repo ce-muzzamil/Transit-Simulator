@@ -12,7 +12,8 @@ def to_torch(obs_):
     obs = deepcopy(obs_)
     for k1 in obs:
         for k2 in obs[k1]:
-            obs[k1][k2] = torch.from_numpy(obs[k1][k2]).to(torch.float32)
+            if not isinstance(obs[k1][k2], torch.Tensor):
+                obs[k1][k2] = torch.from_numpy(obs[k1][k2]).to(torch.float32)
     return obs
 
 

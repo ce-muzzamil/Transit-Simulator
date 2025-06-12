@@ -325,7 +325,7 @@ class Topology:
             1, 0.1, y[p[4] * 3600 : self.hours_of_opperation_per_day * 3600].shape[0]
         )
 
-        y = pd.Series(y).rolling(3600).mean().values
+        y = pd.Series(y).rolling(3600).mean().values * 0.0 + 1.0
         mask = np.isnan(y)
         y[mask] = np.linspace(0.1, y[~mask][0], mask.sum())
         return y
@@ -354,10 +354,12 @@ class Topology:
             shopping_portion + school_portion + office_portion :
         ]
 
-        self.offices_times = [0, 4 * 3600]
-        self.schools_times = [4 * 3600, 6 * 3600]
-        self.shopping_times = [9 * 3600, 15 * 3600]
-        self.residential_times = [8 * 3600, self.hours_of_opperation_per_day * 3600]
+        p = [int(i*self.hours_of_opperation_per_day) for i in [0.15, 0.30, 0.45, 0.60, 0.75]]
+
+        self.offices_times = [0, p[1] * 3600]
+        self.schools_times = [0 * 3600, p[1] * 3600]
+        self.shopping_times = [p[2] * 3600, p[4] * 3600]
+        self.residential_times = [p[2] * 3600, p[4] * 3600]
 
         self.traffic_curve = self.generic_traffic_curve()
 

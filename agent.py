@@ -94,26 +94,18 @@ class GATv2FeatureExtractor(nn.Module):
             return gat(x, edge_index, edge_attr)
         else:
             N = x.shape[0]
+            assert N == 1 # added after transitioning to no-batch intervention
             outs = []
             for i in range(N):
                 outs.append(gat(x[i], edge_index[i], edge_attr[i]))
             return torch.stack(outs, dim=0)
 
     def forward(self, data):
-        if "batch" not in data.keys():
-            batch = None
-            x, edge_index, edge_attr = (
-                data["x"],
-                data["edge_index"].long(),
-                data["edge_attr"],
-            )
-        else:
-            x, edge_index, edge_attr, batch = (
-                data["x"],
-                data["edge_index"].long(),
-                data["edge_attr"],
-                data["batch"],
-            )
+        x, edge_index, edge_attr = (
+            data["x"],
+            data["edge_index"].long(),
+            data["edge_attr"],
+        )
 
         if torch.isnan(x).any():
             print("Found NaNs in obs.x")
@@ -121,15 +113,14 @@ class GATv2FeatureExtractor(nn.Module):
             print("Found NaNs in obs.edge_attr")
         if torch.isnan(edge_index).any():
             print("Found NaNs in obs.edge_index")
-
+            
         x = self.mlp(x)
         x = self.process_for_gat(self.gat1, x, edge_index, edge_attr)
         x = torch.relu(x)
         x = self.dropout(x)
 
         x = self.process_for_gat(self.gat2, x, edge_index, edge_attr)
-        x = torch.relu(x)  # N,L,E
-
+        x = torch.relu(x)
         return x
 
 
@@ -157,11 +148,9 @@ class EncoderLayer(nn.Module):
         self.dropout_2 = nn.Dropout(dropout_rate)
 
     def forward(self, x):
-        # Self-attention
         attn_output, _ = self.mha(x, x, x)
         x = self.norm_1(x + self.dropout_1(attn_output))
 
-        # Feed Forward Network
         ffn_output = self.ffn(x)
         x = self.norm_2(x + self.dropout_2(ffn_output))
 
@@ -172,7 +161,6 @@ class DecoderLayer(nn.Module):
     def __init__(self, embed_size, num_heads, dropout_rate=0.0):
         super().__init__()
 
-        # Masked Self-attention
         self.self_mha = nn.MultiheadAttention(
             embed_dim=embed_size,
             num_heads=num_heads,
@@ -183,7 +171,6 @@ class DecoderLayer(nn.Module):
         self.norm_1 = nn.LayerNorm(embed_size)
         self.dropout_1 = nn.Dropout(dropout_rate)
 
-        # Cross-attention with encoder output
         self.cross_mha = nn.MultiheadAttention(
             embed_dim=embed_size,
             num_heads=num_heads,
@@ -194,7 +181,6 @@ class DecoderLayer(nn.Module):
         self.norm_2 = nn.LayerNorm(embed_size)
         self.dropout_2 = nn.Dropout(dropout_rate)
 
-        # Feed Forward Network
         self.ffn = nn.Sequential(
             nn.Linear(embed_size, embed_size),
             nn.ReLU(),
@@ -205,20 +191,15 @@ class DecoderLayer(nn.Module):
         self.dropout_3 = nn.Dropout(dropout_rate)
 
     def forward(self, x, enc_output):
-        # Masked Self-Attention (future masking)
         self_attn_output, _ = self.self_mha(x, x, x)
         x = self.norm_1(x + self.dropout_1(self_attn_output))
 
-        # Cross-Attention (attend to encoder output)
         cross_attn_output, _ = self.cross_mha(x, enc_output, enc_output)
         x = self.norm_2(x + self.dropout_2(cross_attn_output))
 
-        # Feed Forward Network
         ffn_output = self.ffn(x)
         x = self.norm_3(x + self.dropout_3(ffn_output))
-
         return x
-
 
 class Transformer(nn.Module):
     def __init__(
@@ -247,8 +228,6 @@ class Transformer(nn.Module):
         )
 
     def forward(self, src, tgt):
-        # src: (N, L_src, E)
-        # tgt: (N, L_tgt, E)
 
         enc_output = src
         for layer in self.encoder_layers:
@@ -259,7 +238,6 @@ class Transformer(nn.Module):
             dec_output = layer(dec_output, enc_output)
 
         return dec_output
-
 
 class FeatureExtractor(nn.Module):
     def __init__(
@@ -693,10 +671,20 @@ def ppo_update(
                 batch_indices = indices[i : i + batch_size]
 
                 obs_batch_list = [obs_buf[agent_id][idx] for idx in batch_indices]
-                obs_batch = batch_obs(obs_batch_list)
-                obs_batch = to_device(obs_batch, device=device)
+                # obs_batch = batch_obs(obs_batch_list)
+                # obs_batch = to_device(obs_batch, device=device)
 
-                logits, new_values_imm, new_values_del = model(obs_batch)
+                logits, new_values_imm, new_values_del  = [], [], []
+                for obs in obs_batch_list:
+                    _logits, _new_values_imm, _new_values_del = model(to_device(obs), device=device)
+                    logits.append(_logits)
+                    new_values_imm.append(_new_values_imm)
+                    new_values_del.append(_new_values_del)
+
+                logits = torch.stack(logits, dim=0).to(device)
+                new_values_imm = torch.stack(new_values_imm, dim=0).to(device)
+                new_values_del = torch.stack(new_values_del, dim=0).to(device)
+
                 dist = Categorical(logits=logits)
                 entropy = dist.entropy().mean()
 
@@ -727,7 +715,7 @@ def ppo_update(
 
                 optimizer.zero_grad()
                 (policy_loss - entropy_coef * entropy + value_loss * vf_coef).backward()
-                # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
                 optimizer.step()
 
                 epoch_policy_loss += policy_loss.item()
@@ -736,27 +724,27 @@ def ppo_update(
                 num_batches += 1
 
             # ------------- KL Divergence Check -------------
-            if num_batches > 0:
-                with torch.no_grad():
-                    sample_size = min(64, T)
-                    sample_indices = torch.randperm(T)[:sample_size]
-                    sample_obs = batch_obs(
-                        [obs_buf[agent_id][idx] for idx in sample_indices]
-                    )
-                    sample_obs = to_device(sample_obs, device=device)
-                    sample_actions = torch.tensor(
-                        [action_buf[agent_id][idx] for idx in sample_indices],
-                        device=device,
-                    )
+            # if num_batches > 0:
+            #     with torch.no_grad():
+            #         sample_size = min(64, T)
+            #         sample_indices = torch.randperm(T)[:sample_size]
+            #         sample_obs = batch_obs(
+            #             [obs_buf[agent_id][idx] for idx in sample_indices]
+            #         )
+            #         sample_obs = to_device(sample_obs, device=device)
+            #         sample_actions = torch.tensor(
+            #             [action_buf[agent_id][idx] for idx in sample_indices],
+            #             device=device,
+            #         )
 
-                    new_logits, _, _ = model(sample_obs)
-                    new_dist = Categorical(logits=new_logits)
-                    new_logp = new_dist.log_prob(sample_actions)
-                    old_logp_sample = old_logps[sample_indices]
-                    logp_diff = new_logp - old_logp_sample
-                    approx_kl = ((torch.exp(logp_diff) - 1) - logp_diff).mean()
-                    if approx_kl > target_kl:
-                        break
+            #         new_logits, _, _ = model(sample_obs)
+            #         new_dist = Categorical(logits=new_logits)
+            #         new_logp = new_dist.log_prob(sample_actions)
+            #         old_logp_sample = old_logps[sample_indices]
+            #         logp_diff = new_logp - old_logp_sample
+            #         approx_kl = ((torch.exp(logp_diff) - 1) - logp_diff).mean()
+            #         if approx_kl > target_kl:
+            #             break
 
             policy_losses.append(epoch_policy_loss / num_batches)
             value_losses.append(epoch_value_loss / num_batches)

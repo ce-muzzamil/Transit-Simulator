@@ -288,35 +288,35 @@ class TransitNetworkEnv:
         return self.fix_obs_shape(obs)
 
     def fix_obs_shape(self, obs: Data, is_subgraph=False):
-        if is_subgraph:
-            max_edges = self.max_route_edges
-            max_nodes = self.max_route_nodes
-        else:
-            max_edges = self.max_edges
-            max_nodes = self.max_nodes
+        # if is_subgraph:
+        #     max_edges = self.max_route_edges
+        #     max_nodes = self.max_route_nodes
+        # else:
+        #     max_edges = self.max_edges
+        #     max_nodes = self.max_nodes
 
-        if obs.edge_attr.ndim == 1:
-            obs.edge_attr = np.expand_dims(obs.edge_attr, 1)
+        # if obs.edge_attr.ndim == 1:
+        #     obs.edge_attr = np.expand_dims(obs.edge_attr, 1)
 
-        # Pad node features (obs.x) along axis 0 to reach max_nodes
-        pad_x = ((0, max_nodes - obs.x.shape[0]), (0, 0))  # pad rows
-        obs.x = np.pad(obs.x, pad_x, mode="constant", constant_values=0)
+        # # Pad node features (obs.x) along axis 0 to reach max_nodes
+        # pad_x = ((0, max_nodes - obs.x.shape[0]), (0, 0))  # pad rows
+        # obs.x = np.pad(obs.x, pad_x, mode="constant", constant_values=0)
 
-        # Pad edge_index along axis 1 (columns) to reach max_edges
-        pad_edge_index = (
-            (0, 0),
-            (0, max_edges - obs.edge_index.shape[1]),
-        )  # pad columns
+        # # Pad edge_index along axis 1 (columns) to reach max_edges
+        # pad_edge_index = (
+        #     (0, 0),
+        #     (0, max_edges - obs.edge_index.shape[1]),
+        # )  # pad columns
 
-        obs.edge_index = np.pad(
-            obs.edge_index, pad_edge_index, mode="constant", constant_values=0
-        )
+        # obs.edge_index = np.pad(
+        #     obs.edge_index, pad_edge_index, mode="constant", constant_values=0
+        # )
 
-        # Pad edge_attr along axis 0 (rows) to reach max_edges
-        pad_edge_attr = ((0, max_edges - obs.edge_attr.shape[0]), (0, 0))  # pad rows
-        obs.edge_attr = np.pad(
-            obs.edge_attr, pad_edge_attr, mode="constant", constant_values=0
-        )
+        # # Pad edge_attr along axis 0 (rows) to reach max_edges
+        # pad_edge_attr = ((0, max_edges - obs.edge_attr.shape[0]), (0, 0))  # pad rows
+        # obs.edge_attr = np.pad(
+        #     obs.edge_attr, pad_edge_attr, mode="constant", constant_values=0
+        # )
 
         return {"x": obs.x, "edge_index": obs.edge_index, "edge_attr": obs.edge_attr}
 

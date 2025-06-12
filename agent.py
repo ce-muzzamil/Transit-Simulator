@@ -42,14 +42,12 @@ def detach_grads(obs):
         obs = obs.detach()
     return obs
 
-
 def batch_obs(obs: list):
     bobs = {}
     keys = obs[0].keys()
     for k in keys:
         bobs[k] = torch.stack([obs[i][k] for i in range(len(obs))], dim=0)
     return bobs
-
 
 class GATv2FeatureExtractor(nn.Module):
     def __init__(
@@ -677,7 +675,7 @@ def ppo_update(
 
                 logits, new_values_imm, new_values_del  = [], [], []
                 for obs in obs_batch_list:
-                    _logits, _new_values_imm, _new_values_del = model(to_device(obs), device=device)
+                    _logits, _new_values_imm, _new_values_del = model(to_device(obs, device=device))
                     logits.append(_logits)
                     new_values_imm.append(_new_values_imm)
                     new_values_del.append(_new_values_del)

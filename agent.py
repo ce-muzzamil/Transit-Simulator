@@ -14,8 +14,9 @@ def to_torch(obs_):
         for k2 in obs[k1]:
             if not isinstance(obs[k1][k2], torch.Tensor):
                 obs[k1][k2] = torch.from_numpy(obs[k1][k2]).to(torch.float32)
+            else:
+                obs[k1][k2] = obs[k1][k2].to(torch.float32)
     return obs
-
 
 def to_device(obs, device="cpu"):
     if isinstance(obs, dict):
@@ -28,7 +29,6 @@ def to_device(obs, device="cpu"):
     else:
         obs = obs.to(device)
     return obs
-
 
 def detach_grads(obs):
     if isinstance(obs, dict):

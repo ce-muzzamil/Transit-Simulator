@@ -467,7 +467,7 @@ def collect_rollout(
                 for bus in retired_buses:
                     if bus.created_at == current_time:
                         if bus.num_passengers_served / bus.capacity > 0.90:
-                            additional_reward += 8
+                            additional_reward += 5
                         elif bus.num_passengers_served / bus.capacity > 0.50:
                             additional_reward += 4
                         elif bus.num_passengers_served / bus.capacity > 0.25:

@@ -5,8 +5,6 @@ import torch.nn.functional as F
 from torch_geometric.nn import GATv2Conv
 from torch.distributions import Categorical
 from copy import deepcopy
-import itertools
-
 
 def to_torch(obs_):
     obs = deepcopy(obs_)
@@ -41,13 +39,6 @@ def detach_grads(obs):
     else:
         obs = obs.detach()
     return obs
-
-def batch_obs(obs: list):
-    bobs = {}
-    keys = obs[0].keys()
-    for k in keys:
-        bobs[k] = torch.stack([obs[i][k] for i in range(len(obs))], dim=0)
-    return bobs
 
 class GATv2FeatureExtractor(nn.Module):
     def __init__(
@@ -304,56 +295,6 @@ class FeatureExtractor(nn.Module):
         out = self.transformer(topology_vector, routes_vector)  # N,L,E
         out = torch.mean(out, dim=1)  # N,E
         return out
-
-# class FeatureExtractor(nn.Module):
-#     def __init__(
-#         self,
-#         observation_space,
-#         gnn_hidden_dim=128,
-#         gnn_num_heads=4,
-#         embed_size=256,
-#         transformer_num_heads=4,
-#         num_encoder_layers=6,
-#         num_decoder_layers=6,
-#         dropout_rate=0.0,
-#     ):
-#         super().__init__()
-
-#         self.feature_dim = embed_size
-#         self.route = GATv2FeatureExtractor(
-#             observation_space["x_route"].shape[-1],
-#             observation_space["edge_attr_route"].shape[-1],
-#             gnn_hidden_dim,
-#             gnn_num_heads,
-#             embed_size,
-#             dropout_rate=dropout_rate,
-#         )
-
-#         self.encoder_layers = nn.ModuleList(
-#             [
-#                 EncoderLayer(embed_size, transformer_num_heads, dropout_rate)
-#                 for _ in range(num_encoder_layers)
-#             ]
-#         )
-
-#     def forward(self, observations):
-#         route = {
-#             f"x": observations[f"x_route"],
-#             f"edge_index": observations[f"edge_index_route"],
-#             f"edge_attr": observations[f"edge_attr_route"],
-#         }
-
-#         routes_vector = self.route(route)  # (N, L, E)
-
-#         if routes_vector.ndim == 2:
-#             routes_vector = routes_vector.unsqueeze(0)
-
-#         for layer in self.encoder_layers:
-#             routes_vector = layer(routes_vector)
-
-#         out = torch.mean(routes_vector, dim=1)  # N,E
-#         return out
-
 
 class Model(nn.Module):
     def __init__(
@@ -614,25 +555,20 @@ def ppo_update(
             next_non_terminal = 1.0 - float(done_buf[t])
 
             next_value_imm = 0.0 if t == T - 1 else value_buf[agent_id][t + 1][0]
-            # if action_buf[agent_id][t] == 1:
             delta_imm = (
-                info_buf[agent_id][t]["reward_type_3"]
+                info_buf[agent_id][t]["reward_type_3"]/4
                 + gamma_imm * next_value_imm * next_non_terminal
                 - value_buf[agent_id][t][0]
             )
             gae_imm = delta_imm + gamma_imm * lam * next_non_terminal * gae_imm
             advs_imm.insert(0, gae_imm)
             returns_imm.insert(0, gae_imm + value_buf[agent_id][t][0])
-            # else:
-            #     delta_imm = 0 - value_buf[agent_id][t][0]
-            #     advs_imm.insert(0, delta_imm)
-            #     returns_imm.insert(0, 0)
 
             next_value_del = 0.0 if t == T - 1 else value_buf[agent_id][t + 1][1]
 
             if action_buf[agent_id][t] == 0:
                 delta_del = (
-                    info_buf[agent_id][t]["reward_type_2"]
+                    info_buf[agent_id][t]["reward_type_2"]/15
                     + gamma_del * next_value_del * next_non_terminal
                     - value_buf[agent_id][t][1]
                 )
@@ -670,9 +606,6 @@ def ppo_update(
                 batch_indices = indices[i : i + batch_size]
 
                 obs_batch_list = [obs_buf[agent_id][idx] for idx in batch_indices]
-                # obs_batch = batch_obs(obs_batch_list)
-                # obs_batch = to_device(obs_batch, device=device)
-
                 logits, new_values_imm, new_values_del  = [], [], []
                 for obs in obs_batch_list:
                     _logits, _new_values_imm, _new_values_del = model(to_device(obs, device=device))

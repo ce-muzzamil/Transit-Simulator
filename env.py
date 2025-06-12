@@ -360,7 +360,7 @@ class TransitNetworkEnv:
                     reward[agent_id] = 0 #self.hours_of_opperation_per_day ** 2
 
         for agent_id in self.possible_agents:
-            if self.avg_waiting_time[agent_id] > 180:
+            if self.avg_waiting_time[agent_id] > 225:
                 terminated[agent_id] = True
                 if not self.zero_terminal_reward:
                     reward[agent_id] += 0 # (self.hours_of_opperation_per_day - self.current_time / 3600.0) ** 2
@@ -453,7 +453,7 @@ class TransitNetworkEnv:
 
             reward_2 = 0
             if action==0:
-                reward_2 -= 1 if avg_waiting_time // 15 > 0 else 0
+                reward_2 -= avg_waiting_time // 15
 
             # if avg_stranding_count > 0 and action == 0:
             #     reward_2 += -1

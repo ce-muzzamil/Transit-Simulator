@@ -474,8 +474,9 @@ class TransitNetworkEnv:
             else:
                 expence_of_bus_journey = 0
 
+            reward_3 = 0
             if cap > 0:
-                reward_3 = -expence_of_bus_journey
+                reward_3 += -expence_of_bus_journey
 
             reward = reward_3 + reward_2
             

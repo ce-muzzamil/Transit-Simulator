@@ -550,17 +550,17 @@ def collect_rollout(
                 for bus in retired_buses:
                     if bus.created_at == current_time:
                         if bus.num_passengers_served / bus.capacity > 0.90:
-                            additional_reward += 100
+                            additional_reward += 3
                         elif bus.num_passengers_served / bus.capacity > 0.50:
-                            additional_reward += 10
+                            additional_reward += 2
                         elif bus.num_passengers_served / bus.capacity > 0.25:
                             additional_reward += 1
                         elif bus.num_passengers_served / bus.capacity > 0.10:
-                            additional_reward += 0.1
+                            additional_reward += 0
                         elif bus.num_passengers_served / bus.capacity > 0.0:
-                            additional_reward += 0.01
+                            additional_reward += 0
                         else:
-                            additional_reward += 0.0
+                            additional_reward += 0
 
                 if additional_reward > 0:
                     reward_buf[agent_id][t] += additional_reward

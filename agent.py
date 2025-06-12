@@ -115,8 +115,8 @@ class GATv2FeatureExtractor(nn.Module):
             
         x = self.mlp(x)
         x = self.process_for_gat(self.gat1, x, edge_index, edge_attr)
-        x = torch.relu(x)
-        x = self.dropout(x)
+        # x = torch.relu(x)
+        # x = self.dropout(x)
 
         # x = self.process_for_gat(self.gat2, x, edge_index, edge_attr)
         # x = torch.relu(x)

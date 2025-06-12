@@ -61,21 +61,30 @@ class GATv2FeatureExtractor(nn.Module):
 
         self.gat1 = GATv2Conv(
             in_channels=hidden_dim,
-            out_channels=hidden_dim,
-            heads=num_heads,
-            concat=True,
-            edge_dim=edge_dim,
-            dropout=dropout_rate,
-        )
-
-        self.gat2 = GATv2Conv(
-            in_channels=hidden_dim * num_heads,
             out_channels=out_dim,
             heads=1,
             concat=True,
             edge_dim=edge_dim,
             dropout=dropout_rate,
         )
+
+        # self.gat1 = GATv2Conv(
+        #     in_channels=hidden_dim,
+        #     out_channels=hidden_dim,
+        #     heads=num_heads,
+        #     concat=True,
+        #     edge_dim=edge_dim,
+        #     dropout=dropout_rate,
+        # )
+
+        # self.gat2 = GATv2Conv(
+        #     in_channels=hidden_dim * num_heads,
+        #     out_channels=out_dim,
+        #     heads=1,
+        #     concat=True,
+        #     edge_dim=edge_dim,
+        #     dropout=dropout_rate,
+        # )
 
         self.dropout = nn.Dropout(0.1)
 
@@ -109,8 +118,8 @@ class GATv2FeatureExtractor(nn.Module):
         x = torch.relu(x)
         x = self.dropout(x)
 
-        x = self.process_for_gat(self.gat2, x, edge_index, edge_attr)
-        x = torch.relu(x)
+        # x = self.process_for_gat(self.gat2, x, edge_index, edge_attr)
+        # x = torch.relu(x)
         return x
 
 
@@ -467,15 +476,15 @@ def collect_rollout(
                 for bus in retired_buses:
                     if bus.created_at == current_time:
                         if bus.num_passengers_served / bus.capacity > 0.90:
-                            additional_reward += 4
+                            additional_reward += 8
                         elif bus.num_passengers_served / bus.capacity > 0.50:
-                            additional_reward += 3
+                            additional_reward += 4
                         elif bus.num_passengers_served / bus.capacity > 0.25:
-                            additional_reward += 2
+                            additional_reward += 3
                         elif bus.num_passengers_served / bus.capacity > 0.10:
-                            additional_reward += 1
+                            additional_reward += 2
                         elif bus.num_passengers_served / bus.capacity > 0.0:
-                            additional_reward += 0.5
+                            additional_reward += 1
                         else:
                             additional_reward += 0
 

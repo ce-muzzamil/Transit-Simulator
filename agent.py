@@ -568,7 +568,7 @@ def ppo_update(
 
             if action_buf[agent_id][t] == 0:
                 delta_del = (
-                    info_buf[agent_id][t]["reward_type_2"]/15
+                    info_buf[agent_id][t]["reward_type_2"]/12
                     + gamma_del * next_value_del * next_non_terminal
                     - value_buf[agent_id][t][1]
                 )

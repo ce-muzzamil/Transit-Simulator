@@ -453,23 +453,31 @@ class TransitNetworkEnv:
 
             reward_2 = 0
             if action==0:
-                reward_2 -= avg_waiting_time // 15
+                reward_2 -= avg_waiting_time // 5
 
             # if avg_stranding_count > 0 and action == 0:
             #     reward_2 += -1
 
             self.avg_waiting_time[agent_id] = avg_waiting_time
 
+            buses = [bus for bus in self.transit_system.step_retired_buses if bus.service_route == route_id and bus.reversed == is_reversed]
+            
+            bor = [bus.capacity-len(bus.passengers) for bus in self.transit_system.buses if bus.service_route == route_id and bus.reversed == is_reversed]
+            if len(bor)>1:
+                cap = sum(bor) - bor[0]
+                cap = cap / (len(bor)-1)
+            else:
+                cap = 0
+
             if action == 1:
                 expence_of_bus_journey = 1
             else:
                 expence_of_bus_journey = 0
 
-            reward_3 = -expence_of_bus_journey
+            if cap > 0:
+                reward_3 = -expence_of_bus_journey
 
             reward = reward_3 + reward_2
-
-            buses = [bus for bus in self.transit_system.step_retired_buses if bus.service_route == route_id and bus.reversed == is_reversed]
             
             reward_info = {
                 "reward_type_2": reward_2,

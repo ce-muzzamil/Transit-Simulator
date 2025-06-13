@@ -426,7 +426,10 @@ def collect_rollout(
                 else:
                     action = torch.argmax(logits, dim=-1)
             else:
-                action = model(env.current_time)
+                if model == "random":
+                    action = np.random.choice((0, 1), [])
+                else:
+                    action = model(env.current_time)
 
             obs_buf[agent_id].append(
                 to_device(detach_grads(obs[agent_id]), device="cpu")

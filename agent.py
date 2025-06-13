@@ -560,6 +560,7 @@ def ppo_update(
                 + gamma_imm * next_value_imm * next_non_terminal
                 - value_buf[agent_id][t][0]
             )
+
             gae_imm = delta_imm + gamma_imm * lam * next_non_terminal * gae_imm
             advs_imm.insert(0, gae_imm)
             returns_imm.insert(0, gae_imm + value_buf[agent_id][t][0])
@@ -568,7 +569,7 @@ def ppo_update(
 
             if action_buf[agent_id][t] == 0:
                 delta_del = (
-                    info_buf[agent_id][t]["reward_type_2"]/12
+                    info_buf[agent_id][t]["reward_type_2"]/4
                     + gamma_del * next_value_del * next_non_terminal
                     - value_buf[agent_id][t][1]
                 )

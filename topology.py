@@ -900,7 +900,7 @@ class Topology:
                 for i in range(0, self.hours_of_opperation_per_day * 3600, self.analysis_period_sec)
             ]
         )
-        slices = [slice(i, j) for i, j in zip(range(0, 1080, 60), range(60, 1081, 60))]
+        slices = [slice(i, j) for i, j in zip(range(0, self.hours_of_opperation_per_day*60, 5), range(60, self.hours_of_opperation_per_day*60+1, 5))]
 
         num_pov = 8
         pov = np.concatenate(

@@ -501,10 +501,10 @@ def collect_rollout(
             elif a == 1:
                 mean_of_action_1.append(r)
 
-    mean_of_action_0 = sum(mean_of_action_0) / len(mean_of_action_0) if mean_of_action_0 else 0.0
-    mean_of_action_1 = sum(mean_of_action_1) / len(mean_of_action_1) if mean_of_action_1 else 0.0
-
-    print(f"Mean of action 0: {mean_of_action_0:.2f}, Mean of action 1: {mean_of_action_1 - mean_of_action_0:.2f}")
+    if not testing:
+        mean_of_action_0 = sum(mean_of_action_0) / len(mean_of_action_0) if mean_of_action_0 else 0.0
+        mean_of_action_1 = sum(mean_of_action_1) / len(mean_of_action_1) if mean_of_action_1 else 0.0
+        print(f"Mean of action 0: {mean_of_action_0:.2f}, Mean of action 1: {mean_of_action_1 - mean_of_action_0:.2f}")
 
     return (
         obs_buf,

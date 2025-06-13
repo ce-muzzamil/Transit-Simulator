@@ -9,7 +9,7 @@
     "min_num_route_per_toplogy": 3,
     "max_num_route_per_toplogy": 7,
     "hours_of_opperation_per_day": 1,
-    "mean_population_density": 2000.0,
+    "mean_population_density": 1000.0,
     "std_population_density": 500.0,
     "min_population_density": 350.0,
     "mean_catchment_radius": 1.0,

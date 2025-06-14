@@ -423,7 +423,9 @@ def collect_rollout(
                     action = action.item()
 
                 else:
-                    action = torch.argmax(logits, dim=-1)
+                    # action = torch.argmax(logits, dim=-1)
+                    dist = Categorical(logits=logits)
+                    action = dist.sample()
             else:
                 if model == "random":
                     action = np.random.choice((0, 1), [])

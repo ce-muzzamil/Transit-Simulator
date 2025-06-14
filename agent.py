@@ -365,7 +365,6 @@ def fixed_policy(interval):
             return 1
         else:
             return 0
-
     return wrapped
 
 

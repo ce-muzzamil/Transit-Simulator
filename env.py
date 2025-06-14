@@ -391,7 +391,7 @@ class TransitNetworkEnv:
                     edge_index=edge_index,
                     edge_attr=edge_attr,
                 )
-                sub_data["x"][:, -1] = float(is_reversed)
+                sub_data["x"][:, -2] = float(is_reversed)
                 subgraphs[(route_id, is_reversed)] = self.fix_obs_shape(
                     sub_data, is_subgraph=True
                 )

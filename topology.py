@@ -328,7 +328,7 @@ class Topology:
         y = pd.Series(y).rolling(3600).mean().values
         mask = np.isnan(y)
         y[mask] = np.linspace(0.1, y[~mask][0], mask.sum())
-        return y * 0.0 + 1.0
+        return y
 
     def initiallize_traffic_data(self) -> None:
         """

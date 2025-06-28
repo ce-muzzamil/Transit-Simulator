@@ -211,7 +211,7 @@ class TransitSystem:
                 self.step_retired_buses.add(bus)
                 self.retired_buses.add(bus)
                 self.report[time]["total_done_buses"] += 1
-                self.report[f"route_{bus.service_route}_{bus.reversed}"][
+                self.report[time][f"route_{bus.service_route}_{bus.reversed}"][
                     "total_done_buses"
                 ] += 1
 

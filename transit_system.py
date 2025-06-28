@@ -112,13 +112,31 @@ class TransitSystem:
                 "total_avg_waiting_time": None,
                 "total_avg_average_stranded_count": None,
                 **{
-                    f"route_{route_id}_{is_reversed}": {
-                        "total_deployed_buses": 0,
-                        "total_done_buses": 0,
-                        "total_done_passengers": 0,
-                        "total_avg_waiting_time": None,
-                        "total_avg_average_stranded_count": None,
-                    }
+                    f"total_done_buses_{route_id}_{is_reversed}": 0
+                    for route_id in self.route_ids
+                    for is_reversed in [True, False]
+                },
+
+                **{
+                    f"total_deployed_buses_{route_id}_{is_reversed}": 0
+                    for route_id in self.route_ids
+                    for is_reversed in [True, False]
+                },
+
+                **{
+                    f"total_done_passengers_{route_id}_{is_reversed}": 0
+                    for route_id in self.route_ids
+                    for is_reversed in [True, False]
+                },
+
+                **{
+                    f"total_avg_waiting_time_{route_id}_{is_reversed}": None                    
+                    for route_id in self.route_ids
+                    for is_reversed in [True, False]
+                },
+
+                **{
+                    f"total_avg_average_stranded_count_{route_id}_{is_reversed}": None
                     for route_id in self.route_ids
                     for is_reversed in [True, False]
                 },
@@ -146,7 +164,7 @@ class TransitSystem:
             )
         )
         self.report[time]["total_deployed_buses"] += 1
-        self.report[time][f"route_{route_id}_{reversed}"]["total_deployed_buses"] += 1
+        self.report[time][f"total_deployed_buses_{route_id}_{reversed}"] += 1
         self.num_busses_added += 1
 
     def claculate_passenger_parametres(self, time: int, passenger: Passenger):
@@ -192,11 +210,9 @@ class TransitSystem:
                 self.num_passengers_done += 1
                 self.claculate_passenger_parametres(time, passenger)
                 self.report[time]["total_done_passengers"] += 1
-                self.report[time][f"route_{bus.service_route}_{bus.reversed}"][
-                    "total_done_passengers"
-                ] += 1
+                self.report[time][f"total_done_passengers_{bus.service_route}_{bus.reversed}"] += 1
                 self.report[time]["total_avg_waiting_time"] = passenger.tagged_waiting_time / 60
-                self.report[time][f"route_{bus.service_route}_{bus.reversed}"] = passenger.tagged_waiting_time / 60.0
+                self.report[time][f"total_avg_waiting_time_{bus.service_route}_{bus.reversed}"] = passenger.tagged_waiting_time / 60.0
 
                 if self.log_passengers:
                     self.passenger_logger.add_to_pool(
@@ -211,9 +227,7 @@ class TransitSystem:
                 self.step_retired_buses.add(bus)
                 self.retired_buses.add(bus)
                 self.report[time]["total_done_buses"] += 1
-                self.report[time][f"route_{bus.service_route}_{bus.reversed}"][
-                    "total_done_buses"
-                ] += 1
+                self.report[time][f"total_done_buses_{bus.service_route}_{bus.reversed}"] += 1
 
         for bus in to_drop:
             if bus in self.buses:

@@ -179,6 +179,8 @@ class Node:
             
         for passenger in self.passengers:
             passenger.waiting_time += self.analysis_period_sec
+            passenger.tagged_waiting_time += self.analysis_period_sec
+
             
         self.step_counter += self.analysis_period_sec
         self.avg_waiting_time_0 = np.max([0]+[passenger.waiting_time for passenger in self.passengers if not passenger.is_reversed])

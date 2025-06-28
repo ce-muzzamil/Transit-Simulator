@@ -47,6 +47,7 @@ class Passenger:
         self.num_stations_traversed: int = len(path)
         self.average_travel_speed: float = 0.0
         self.total_time_taken: float = 0.0
+        self.tagged_waiting_time: int = 0
 
 
     def step(self, node:Node):

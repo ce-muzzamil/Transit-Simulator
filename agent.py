@@ -471,15 +471,15 @@ def collect_rollout(
                 for bus in retired_buses:
                     if bus.created_at == current_time:
                         if bus.num_passengers_served / bus.capacity > 0.90:
-                            additional_reward += 5
-                        elif bus.num_passengers_served / bus.capacity > 0.50:
                             additional_reward += 4
-                        elif bus.num_passengers_served / bus.capacity > 0.10:
+                        elif bus.num_passengers_served / bus.capacity > 0.50:
                             additional_reward += 2
+                        elif bus.num_passengers_served / bus.capacity > 0.10:
+                            additional_reward += 0
                         elif bus.num_passengers_served / bus.capacity > 0.0:
-                            additional_reward += 0.5
+                            additional_reward += -2
                         else:
-                            additional_reward += -3
+                            additional_reward += -4
 
                 if additional_reward > 0:
                     reward_buf[agent_id][t] += additional_reward
@@ -558,7 +558,7 @@ def ppo_update(
             _gamma_imm = 0.0 if info_buf[agent_id][t]["reward_type_3"]/4 < 0 else gamma_imm
             next_value_imm = 0.0 if t == T - 1 else value_buf[agent_id][t + 1][0]
             delta_imm = (
-                info_buf[agent_id][t]["reward_type_3"]/4
+                info_buf[agent_id][t]["reward_type_3"]
                 + _gamma_imm * next_value_imm * next_non_terminal
                 - value_buf[agent_id][t][0]
             )
@@ -571,7 +571,7 @@ def ppo_update(
 
             if action_buf[agent_id][t] == 0:
                 delta_del = (
-                    info_buf[agent_id][t]["reward_type_2"]/4
+                    info_buf[agent_id][t]["reward_type_2"]
                     + gamma_del * next_value_del * next_non_terminal
                     - value_buf[agent_id][t][1]
                 )

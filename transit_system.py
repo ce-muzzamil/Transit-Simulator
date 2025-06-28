@@ -103,6 +103,25 @@ class TransitSystem:
         self.retired_buses = set()
         self.step_retired_buses = set()
 
+        self.report = {
+            "total_deployed_buses": [],
+            "total_done_buses": [],
+            "total_done_passengers": [],
+            "total_avg_waiting_time": [],
+            "total_avg_average_stranded_count": [],
+            **{
+                f"route_{route_id}_{is_reversed}": {
+                    "total_deployed_buses": [],
+                    "total_done_buses": [],
+                    "total_done_passengers": [],
+                    "total_avg_waiting_time": [],
+                    "total_avg_average_stranded_count": [],
+                }
+                for route_id in self.route_ids
+                for is_reversed in [True, False]
+            }
+        }
+
     def add_bus_on_route(self, route_id: int, reversed: bool, time: int):
         """
         Appends a bus to a route id.
@@ -124,6 +143,8 @@ class TransitSystem:
                 created_at=time,
             )
         )
+        self.report["total_deployed_buses"].append(1)
+        self.report[f"route_{route_id}_{reversed}"]["total_deployed_buses"].append(1)
         self.num_busses_added += 1
 
     def claculate_passenger_parametres(self, time: int, passenger: Passenger):
@@ -165,6 +186,10 @@ class TransitSystem:
             for passenger in passengers:
                 self.num_passengers_done += 1
                 self.claculate_passenger_parametres(time, passenger)
+                self.report["total_done_passengers"].append(1)
+                self.report[f"route_{bus.service_route}_{bus.reversed}"]["total_done_passengers"].append(1)
+                self.report["total_avg_waiting_time"].append(passenger.tagged_waiting_time)
+                self.report[f"route_{bus.service_route}_{bus.reversed}"]["total_avg_waiting_time"].append(passenger.tagged_waiting_time)
                 
                 if self.log_passengers:
                     self.passenger_logger.add_to_pool(
@@ -178,6 +203,9 @@ class TransitSystem:
                 to_drop.append(bus)
                 self.step_retired_buses.add(bus)
                 self.retired_buses.add(bus)
+                self.report["total_done_buses"].append(1)
+                self.report[f"route_{bus.service_route}_{bus.reversed}"]["total_done_buses"].append(1)
+                
 
         for bus in to_drop:
             if bus in self.buses:

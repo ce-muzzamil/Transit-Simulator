@@ -99,28 +99,30 @@ class TransitSystem:
             for _ in range(self.num_busses_per_route):
                 self.add_bus_on_route(route_id, reversed=False)
                 self.add_bus_on_route(route_id, reversed=True)
-        
+
         self.retired_buses = set()
         self.step_retired_buses = set()
 
-        self.report = {
-            "total_deployed_buses": [],
-            "total_done_buses": [],
-            "total_done_passengers": [],
-            "total_avg_waiting_time": [],
-            "total_avg_average_stranded_count": [],
-            **{
-                f"route_{route_id}_{is_reversed}": {
-                    "total_deployed_buses": [],
-                    "total_done_buses": [],
-                    "total_done_passengers": [],
-                    "total_avg_waiting_time": [],
-                    "total_avg_average_stranded_count": [],
-                }
-                for route_id in self.route_ids
-                for is_reversed in [True, False]
+        self.report = {}
+        for time in range(0, hours_of_opperation_per_day * 3600, analysis_period_sec):
+            self.report[time] = {
+                "total_deployed_buses": 0,
+                "total_done_buses": 0,
+                "total_done_passengers": 0,
+                "total_avg_waiting_time": None,
+                "total_avg_average_stranded_count": None,
+                **{
+                    f"route_{route_id}_{is_reversed}": {
+                        "total_deployed_buses": 0,
+                        "total_done_buses": 0,
+                        "total_done_passengers": 0,
+                        "total_avg_waiting_time": None,
+                        "total_avg_average_stranded_count": None,
+                    }
+                    for route_id in self.route_ids
+                    for is_reversed in [True, False]
+                },
             }
-        }
 
     def add_bus_on_route(self, route_id: int, reversed: bool, time: int):
         """
@@ -143,8 +145,8 @@ class TransitSystem:
                 created_at=time,
             )
         )
-        self.report["total_deployed_buses"].append(1)
-        self.report[f"route_{route_id}_{reversed}"]["total_deployed_buses"].append(1)
+        self.report[time]["total_deployed_buses"] += 1
+        self.report[time][f"route_{route_id}_{reversed}"]["total_deployed_buses"] += 1
         self.num_busses_added += 1
 
     def claculate_passenger_parametres(self, time: int, passenger: Passenger):
@@ -159,7 +161,10 @@ class TransitSystem:
             distances = []
             for u, v in zip(path[:-1], path[1:]):
                 for route in self.topology.routes:
-                    if u.node_id in route.node_pair_id and v.node_id in route.node_pair_id:
+                    if (
+                        u.node_id in route.node_pair_id
+                        and v.node_id in route.node_pair_id
+                    ):
                         distances.append(route.distance)
 
             passenger.distance_traversed = np.sum(distances)
@@ -186,30 +191,32 @@ class TransitSystem:
             for passenger in passengers:
                 self.num_passengers_done += 1
                 self.claculate_passenger_parametres(time, passenger)
-                self.report["total_done_passengers"].append(1)
-                self.report[f"route_{bus.service_route}_{bus.reversed}"]["total_done_passengers"].append(1)
-                self.report["total_avg_waiting_time"].append(passenger.tagged_waiting_time)
-                self.report[f"route_{bus.service_route}_{bus.reversed}"]["total_avg_waiting_time"].append(passenger.tagged_waiting_time)
-                
+                self.report[time]["total_done_passengers"] += 1
+                self.report[time][f"route_{bus.service_route}_{bus.reversed}"][
+                    "total_done_passengers"
+                ] += 1
+                self.report[time]["total_avg_waiting_time"] = passenger.tagged_waiting_time / 60
+                self.report[time][f"route_{bus.service_route}_{bus.reversed}"] = passenger.tagged_waiting_time / 60.0
+
                 if self.log_passengers:
                     self.passenger_logger.add_to_pool(
                         seed=self.seed, time=time, **passenger.to_dct()
                     )
                     self.passenger_logger.commit()
-        
+
         to_drop = []
         for bus in self.buses:
             if bus.done:
                 to_drop.append(bus)
                 self.step_retired_buses.add(bus)
                 self.retired_buses.add(bus)
-                self.report["total_done_buses"].append(1)
-                self.report[f"route_{bus.service_route}_{bus.reversed}"]["total_done_buses"].append(1)
-                
+                self.report[time]["total_done_buses"] += 1
+                self.report[f"route_{bus.service_route}_{bus.reversed}"][
+                    "total_done_buses"
+                ] += 1
 
         for bus in to_drop:
             if bus in self.buses:
                 self.buses.remove(bus)
 
         self.num_buses_done += len(to_drop)
-        

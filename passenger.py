@@ -50,36 +50,20 @@ class Passenger:
         self.tagged_waiting_time: int = 0
 
 
-    # def step(self, node:Node):
-    #     min_exit_node = min(node.exit_nodes)
-    #     path = [node.node_id for node in self.path]
-    #     try:
-    #         exit_index = path.index(min_exit_node)
-    #     except:
-    #         self.is_reversed = True
-    #         return
-        
-    #     node_index = path.index(node.node_id)
-    #     if exit_index == node_index:
-    #         self.is_reversed = True
-    #         return
-
-    #     path = path[min(exit_index, node_index) : max(exit_index, node_index)] + [min_exit_node]
-    #     for node in [self.destination, *self.transfers]:
-    #         if node.node_id in path:
-    #             self.is_reversed = False
-    #             return
-            
-    #     self.is_reversed = True
-
     def step(self, node:Node):
         min_exit_node = min(node.exit_nodes)
         path = [node.node_id for node in self.path]
         try:
             exit_index = path.index(min_exit_node)
         except:
-            self.is_reversed = True
-            return
+            npd = {n:n.affliated_route_ids for n in self.path}
+            last_route_node = [n for n in npd if list(npd[n])[0] in node.affliated_route_ids][-1]
+            if last_route_node in node.od_route[min_exit_node]:
+                self.is_reversed = False
+                return
+            else:
+                self.is_reversed = True
+                return
         
         node_index = path.index(node.node_id)
         if exit_index == node_index:

@@ -70,7 +70,7 @@ class Passenger:
                 self.is_reversed = False
                 return
             
-        self.is_reversed = True
+        self.is_reversed = False
                 
     def to_dct(self) -> dict:
         """

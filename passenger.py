@@ -57,7 +57,7 @@ class Passenger:
             exit_index = path.index(min_exit_node)
         except:
             npd = {n:n.affliated_route_ids for n in self.path}
-            last_route_node = [n for n in npd if list(npd[n])[0] in node.affliated_route_ids][-1]
+            last_route_node = [n for n in npd if list(npd[n])[0] in node.affliated_route_ids][0]
             if last_route_node in node.od_route[min_exit_node]:
                 self.is_reversed = False
                 return

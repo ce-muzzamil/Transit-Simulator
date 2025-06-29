@@ -57,7 +57,7 @@ class Passenger:
             exit_index = path.index(min_exit_node)
         except:
             self.is_reversed = True
-            # return
+            return
         
         node_index = path.index(node.node_id)
         if exit_index == node_index:

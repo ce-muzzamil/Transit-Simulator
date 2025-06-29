@@ -59,9 +59,9 @@ class TransitNetworkEnv:
         self.possible_agents = [f"agent_{i}" for i in range(self.max_routes * 2)]
 
         self.rd_2_agent_id = [
-            (route_id, reversed)
+            (route_id, is_reversed)
             for route_id in range(self.max_routes)
-            for reversed in [False, True]
+            for is_reversed in [False, True]
         ]
 
         self.rd_2_agent_id = {k: v for k, v in zip(self.rd_2_agent_id, self.agents)}

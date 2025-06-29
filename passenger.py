@@ -64,13 +64,13 @@ class Passenger:
             self.is_reversed = True
             return
 
-        path = path[min(exit_index, node_index):min(exit_index, node_index)] + [min_exit_node]
+        path = path[min(exit_index, node_index):max(exit_index, node_index)] + [min_exit_node]
         for node in [self.destination, *self.transfers]:
             if node.node_id in path:
                 self.is_reversed = False
                 return
             
-        self.is_reversed = False
+        self.is_reversed = True
                 
     def to_dct(self) -> dict:
         """

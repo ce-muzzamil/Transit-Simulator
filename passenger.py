@@ -57,14 +57,14 @@ class Passenger:
             exit_index = path.index(min_exit_node)
         except:
             self.is_reversed = True
-            return
+            # return
         
         node_index = path.index(node.node_id)
         if exit_index == node_index:
             self.is_reversed = True
             return
 
-        path = path[min(exit_index, node_index):max(exit_index, node_index)] + [min_exit_node]
+        path = path[min(exit_index, node_index) : max(exit_index, node_index)] + [min_exit_node]
         for node in [self.destination, *self.transfers]:
             if node.node_id in path:
                 self.is_reversed = False

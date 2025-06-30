@@ -465,23 +465,24 @@ def collect_rollout(
         T = len(reward_buf[agent_id])
         for t in reversed(range(T)):
             current_time = info_buf[agent_id][t]["current_time"]
-            additional_reward = 0
+            additional_reward = None
             for i in range(t, T):
                 retired_buses = info_buf[agent_id][i]["retired_buses"]
                 for bus in retired_buses:
                     if bus.created_at == current_time:
                         if bus.num_passengers_served / bus.capacity > 0.90:
-                            additional_reward += 4
+                            additional_reward = 4
                         elif bus.num_passengers_served / bus.capacity > 0.50:
-                            additional_reward += 2
+                            additional_reward = 2
                         elif bus.num_passengers_served / bus.capacity > 0.10:
-                            additional_reward += 0
+                            additional_reward = 0
                         elif bus.num_passengers_served / bus.capacity > 0.0:
-                            additional_reward += -2
+                            additional_reward = -2
                         else:
-                            additional_reward += -4
-
-                if additional_reward > 0:
+                            additional_reward = -4
+                        break
+                    
+                if additional_reward is not None:
                     reward_buf[agent_id][t] += additional_reward
                     info_buf[agent_id][t]["reward_type_3"] += additional_reward
                     good_buses += 1

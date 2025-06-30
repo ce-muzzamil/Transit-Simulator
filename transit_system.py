@@ -111,6 +111,13 @@ class TransitSystem:
                 "total_done_passengers": 0,
                 "total_avg_waiting_time": None,
                 "total_avg_average_stranded_count": None,
+                "served_passengers": 0,
+                **{
+                    f"served_passengers_{route_id}_{is_reversed}": 0
+                    for route_id in self.route_ids
+                    for is_reversed in [True, False]
+                },
+
                 **{
                     f"total_done_buses_{route_id}_{is_reversed}": 0
                     for route_id in self.route_ids

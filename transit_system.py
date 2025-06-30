@@ -235,6 +235,8 @@ class TransitSystem:
                 self.retired_buses.add(bus)
                 self.report[time]["total_done_buses"] += 1
                 self.report[time][f"total_done_buses_{bus.service_route}_{bus.reversed}"] += 1
+                self.report[time]["served_passengers"] += bus.num_passengers_served
+                self.report[time][f"served_passengers_{bus.service_route}_{bus.reversed}"] += bus.num_passengers_served
 
         for bus in to_drop:
             if bus in self.buses:

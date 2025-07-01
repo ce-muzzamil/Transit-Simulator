@@ -525,7 +525,6 @@ def collect_rollout(
         value_buf,
     )
 
-
 def ppo_update(
     model,
     optimizer,

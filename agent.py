@@ -564,7 +564,7 @@ def ppo_update(
         gae_del = 0.0
         for t in reversed(range(T)):
             next_non_terminal = 1.0 - float(done_buf[t])
-            _gamma_imm = 0.0 if info_buf[agent_id][t]["reward_type_3"]/4 < 0 else gamma_imm
+            _gamma_imm = 0.0 if info_buf[agent_id][t]["reward_type_3"] < 0 else gamma_imm
             next_value_imm = 0.0 if t == T - 1 else value_buf[agent_id][t + 1][0]
             delta_imm = (
                 info_buf[agent_id][t]["reward_type_3"]
@@ -589,7 +589,8 @@ def ppo_update(
                 returns_del.insert(0, gae_del + value_buf[agent_id][t][1])
             else:
                 delta_del = 0 - value_buf[agent_id][t][1]
-                advs_del.insert(0, delta_del)
+                gae_del = delta_del
+                advs_del.insert(0, gae_del)
                 returns_del.insert(0, 0)
 
         advs_imm, advs_del = (
@@ -699,7 +700,6 @@ def ppo_update(
             value_losses_imm.append(epoch_value_loss_imm / num_batches)
             value_losses_del.append(epoch_value_loss_del / num_batches)
             entr.append(epoch_entropy / num_batches)
-
 
     if logger is not None:
         logger.add_to_pool(

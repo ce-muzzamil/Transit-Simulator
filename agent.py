@@ -6,6 +6,8 @@ from torch_geometric.nn import GATv2Conv
 from torch.distributions import Categorical
 from copy import deepcopy
 
+from logger import TrainingEpisodeLogger
+
 def to_torch(obs_):
     obs = deepcopy(obs_)
     for k1 in obs:
@@ -546,8 +548,10 @@ def ppo_update(
     epochs=5,
     batch_size=32,
     device="cpu",
+    env=None,
+    logger: TrainingEpisodeLogger=None
 ):
-    policy_losses, value_losses = [], []
+    policy_losses, value_losses, value_losses_imm, value_losses_del, entr = [], [], [], [], []
 
     for agent_id in obs_buf.keys():
         done_buf = [
@@ -607,6 +611,8 @@ def ppo_update(
         for epoch in range(epochs):
             epoch_policy_loss = 0.0
             epoch_value_loss = 0.0
+            epoch_value_loss_imm = 0.0
+            epoch_value_loss_del = 0.0
             epoch_entropy = 0.0
             num_batches = 0
 
@@ -660,6 +666,8 @@ def ppo_update(
 
                 epoch_policy_loss += policy_loss.item()
                 epoch_value_loss += value_loss.item()
+                epoch_value_loss_imm += value_loss_imm.item()
+                epoch_value_loss_del += value_loss_del.item()
                 epoch_entropy += entropy.item()
                 num_batches += 1
 
@@ -688,6 +696,22 @@ def ppo_update(
 
             policy_losses.append(epoch_policy_loss / num_batches)
             value_losses.append(epoch_value_loss / num_batches)
+            value_losses_imm.append(epoch_value_loss_imm / num_batches)
+            value_losses_del.append(epoch_value_loss_del / num_batches)
+            entr.append(epoch_entropy / num_batches)
+
+
+    if logger is not None:
+        logger.add_to_pool(
+            seed=env.seed,
+            delayed_reward=np.mean([info_buf[agent_id][t]["reward_type_2"] for agent_id in env.possible_agents for t in range(len(reward_buf[agent_id]))]),
+            immediate_reward=np.mean([info_buf[agent_id][t]["reward_type_3"] for agent_id in env.possible_agents for t in range(len(reward_buf[agent_id]))]),
+            policy_loss=np.mean(policy_losses),
+            delayed_value_loss=np.mean(value_losses_del),
+            immediate_value_loss=np.mean(value_losses_imm),
+            entropy=np.mean(entr)
+        )
+        logger.commit()
 
     if len(policy_losses) == 0:
         return 0.0, 0.0

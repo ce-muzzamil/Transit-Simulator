@@ -316,8 +316,8 @@ class Topology:
         y = np.zeros(60 * 60 * self.hours_of_opperation_per_day)
         self.hours_of_opperation_per_day
         p = [int(i*self.hours_of_opperation_per_day) for i in [0.15, 0.30, 0.45, 0.60, 0.75]]
-        y[: p[0] * 3600] = np.linspace(0, 0.4, p[0] * 3600)
-        y[p[0] * 3600 : p[1] * 3600] = np.linspace(0.4, 0.2, y[p[0] * 3600 : p[1] * 3600].shape[0])
+        y[: p[0] * 3600] = np.linspace(0, 0.6, p[0] * 3600)
+        y[p[0] * 3600 : p[1] * 3600] = np.linspace(0.6, 0.2, y[p[0] * 3600 : p[1] * 3600].shape[0])
         y[p[1] * 3600 : p[2] * 3600] = np.linspace(0.2, 0.5, y[p[1] * 3600 : p[2] * 3600].shape[0])
         y[p[2] * 3600 : p[3] * 3600] = np.linspace(0.5, 1.0, y[p[2] * 3600 : p[3] * 3600].shape[0])
         y[p[3] * 3600 : p[4] * 3600] = np.ones(y[p[3] * 3600 : p[4] * 3600].shape[0])

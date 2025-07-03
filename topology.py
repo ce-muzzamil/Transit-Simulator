@@ -328,7 +328,11 @@ class Topology:
         y = pd.Series(y).rolling(3600).mean().values
         mask = np.isnan(y)
         y[mask] = np.linspace(0.1, y[~mask][0], mask.sum())
-        return y
+
+        if np.random.rand() > 0.5:
+            return y
+        else:
+            return y * 0.0 + 1.0
 
     def initiallize_traffic_data(self) -> None:
         """

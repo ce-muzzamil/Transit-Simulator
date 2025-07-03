@@ -332,7 +332,7 @@ class Topology:
         if np.random.rand() > 0.5:
             return y
         else:
-            return y * 0.0 + 1.0
+            return y #* 0.0 + 1.0
 
     def initiallize_traffic_data(self) -> None:
         """

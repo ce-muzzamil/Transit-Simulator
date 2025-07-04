@@ -564,7 +564,8 @@ def ppo_update(
         gae_del = 0.0
         for t in reversed(range(T)):
             next_non_terminal = 1.0 - float(done_buf[t])
-            _gamma_imm = 0.0 if info_buf[agent_id][t]["reward_type_3"] < 0 else gamma_imm
+            _gamma_imm = 0.0 if info_buf[agent_id][t]["reward_type_3"] < 0 or action_buf[agent_id][t] == 1 else gamma_imm
+
             next_value_imm = 0.0 if t == T - 1 else value_buf[agent_id][t + 1][0]
             delta_imm = (
                 info_buf[agent_id][t]["reward_type_3"]

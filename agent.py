@@ -580,12 +580,13 @@ def ppo_update(
             next_value_del = 0.0 if t == T - 1 else value_buf[agent_id][t + 1][1]
 
             if action_buf[agent_id][t] == 0:
+                _gamma_del = gamma_del if info_buf[agent_id][t]["reward_type_2"] != 0 else 0.0
                 delta_del = (
                     info_buf[agent_id][t]["reward_type_2"]
-                    + gamma_del * next_value_del * next_non_terminal
+                    + _gamma_del * next_value_del * next_non_terminal
                     - value_buf[agent_id][t][1]
                 )
-                gae_del = delta_del + gamma_del * lam * next_non_terminal * gae_del
+                gae_del = delta_del + _gamma_del * lam * next_non_terminal * gae_del
                 advs_del.insert(0, gae_del)
                 returns_del.insert(0, gae_del + value_buf[agent_id][t][1])
             else:

@@ -905,7 +905,7 @@ class Topology:
                 for label in unique_labels
             ]
             ax.legend(handles=handles, title="Edge Labels", loc="upper left")
-        ax.set_title(title)
+        ax.set_title(title, font_size=8)
 
         if ax is None:
             plt.show()

@@ -808,7 +808,8 @@ class Topology:
         label_color_map = {label: colors(i) for i, label in enumerate(unique_labels)}
         pos = nx.spring_layout(self.topology, seed=self.seed)
 
-        plt.figure(figsize=figsize)
+        # plt.figure(figsize=figsize)
+
         nx.draw(
             self.topology,
             pos,

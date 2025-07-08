@@ -406,12 +406,59 @@ class Topology:
         self.get_graph()
         self.fix_route_clusters()
         self.remove_isolated_nodes()
+        self.fix_branching()
         self.find_neighbors()
         self.fix_splinter_issue()
         self.fix_route_loop_and_discontinuity()
+        self.fix_branching()
         self.find_neighbors()
         self.initiallize_traffic_data()
         self.process_nodes_and_routes()
+    
+        
+    def fix_branching(self):
+        route_ids = sorted(
+            set([data["label"] for _, _, data in self.topology.edges(data=True)])
+        )
+
+        nodes_in_routes = {
+            k: list(
+                set(
+                    sum(
+                        [
+                            [u, v]
+                            for u, v, d in self.topology.edges(data=True)
+                            if d["label"] == k
+                        ],
+                        [],
+                    )
+                )
+            )
+            for k in route_ids
+        }
+
+        to_remove = []
+        for k in route_ids:
+            nodes = nodes_in_routes[k]
+            transfers = []
+            for node in nodes:
+                neighbors = self.neighbors[node]
+                if len(neighbors) <= 2:
+                    continue
+                else:
+                    transfers.append(node)
+            
+            for transfer in transfers:
+                rids = [self.topology.get_edge_data(transfer, nbr)["label"]==k for nbr in self.neighbors[transfer]]
+                if sum(rids)>2:
+                    neighbors = self.neighbors[transfer]
+                    for nbr in neighbors:
+                        if self.topology.get_edge_data(transfer, nbr)["label"] == k:
+                            if len(self.neighbors(nbr)) == 1:
+                                to_remove.append(nbr)
+
+        for node in to_remove:
+            self.topology.remove_node(node)
 
     def fix_route_loop_and_discontinuity(self):
         route_ids = sorted(
@@ -787,7 +834,6 @@ class Topology:
 
     def show(
         self,
-        figsize: tuple[int, int] = (6, 6),
         node_color: str = "lightblue",
         node_size: int = 200,
         font_size: float = 10,
@@ -807,8 +853,6 @@ class Topology:
         colors = plt.get_cmap("tab10", len(unique_labels))
         label_color_map = {label: colors(i) for i, label in enumerate(unique_labels)}
         pos = nx.spring_layout(self.topology, seed=self.seed)
-
-        # plt.figure(figsize=figsize)
 
         nx.draw(
             self.topology,

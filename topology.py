@@ -409,8 +409,6 @@ class Topology:
         self.find_neighbors()
         self.fix_splinter_issue()
         self.fix_route_loop_and_discontinuity()
-        self.fix_branching()
-        print("KK")
         self.find_neighbors()
         self.initiallize_traffic_data()
         self.process_nodes_and_routes()

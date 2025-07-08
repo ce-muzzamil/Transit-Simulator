@@ -838,6 +838,7 @@ class Topology:
         show_label: bool | None = None,
         with_labels: bool | None = True,
         ax: object = None,
+        black_edges = False
     ) -> None:
         """
         Displays the created topology using `nx.spring_layout`
@@ -862,8 +863,26 @@ class Topology:
             ax=ax,
         )
 
-        if show_label is None:
-            for label in unique_labels:
+        if not black_edges:
+            if show_label is None:
+                for label in unique_labels:
+                    edges_in_group = [
+                        (u, v)
+                        for u, v, data in self.topology.edges(data=True)
+                        if data["label"] == label
+                    ]
+
+                    nx.draw_networkx_edges(
+                        self.topology,
+                        pos,
+                        edgelist=edges_in_group,
+                        edge_color=label_color_map[label],
+                        width=2,
+                        label=label,
+                        ax=ax,
+                    )
+            else:
+                label = show_label
                 edges_in_group = [
                     (u, v)
                     for u, v, data in self.topology.edges(data=True)
@@ -879,29 +898,12 @@ class Topology:
                     label=label,
                     ax=ax,
                 )
-        else:
-            label = show_label
-            edges_in_group = [
-                (u, v)
-                for u, v, data in self.topology.edges(data=True)
-                if data["label"] == label
+
+            handles = [
+                plt.Line2D([0], [0], color=label_color_map[label], lw=2, label=label)
+                for label in unique_labels
             ]
-
-            nx.draw_networkx_edges(
-                self.topology,
-                pos,
-                edgelist=edges_in_group,
-                edge_color=label_color_map[label],
-                width=2,
-                label=label,
-                ax=ax,
-            )
-
-        handles = [
-            plt.Line2D([0], [0], color=label_color_map[label], lw=2, label=label)
-            for label in unique_labels
-        ]
-        ax.legend(handles=handles, title="Edge Labels", loc="upper left")
+            ax.legend(handles=handles, title="Edge Labels", loc="upper left")
         # ax.set_title("Network Topology with Edge Groups Colored")
 
         if ax is None:

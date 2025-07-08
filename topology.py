@@ -839,7 +839,8 @@ class Topology:
         with_labels: bool | None = True,
         ax: object = None,
         black_edges = False,
-        title = ""
+        title = "",
+        title_font=8,
     ) -> None:
         """
         Displays the created topology using `nx.spring_layout`
@@ -905,7 +906,7 @@ class Topology:
                 for label in unique_labels
             ]
             ax.legend(handles=handles, title="Edge Labels", loc="upper left")
-        ax.set_title(title, font_size=8)
+        ax.set_title(title, fontsize=title_font)
 
         if ax is None:
             plt.show()

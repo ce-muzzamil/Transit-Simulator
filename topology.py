@@ -974,3 +974,4 @@ class Topology:
             j += 1
             plt.legend()
         plt.show()
+        return departures, arrivals

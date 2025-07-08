@@ -860,7 +860,7 @@ class Topology:
             for label in unique_labels
         ]
         ax.legend(handles=handles, title="Edge Labels", loc="upper left")
-        ax.set_title("Network Topology with Edge Groups Colored")
+        # ax.set_title("Network Topology with Edge Groups Colored")
 
         if ax is None:
             plt.show()

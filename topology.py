@@ -838,7 +838,8 @@ class Topology:
         show_label: bool | None = None,
         with_labels: bool | None = True,
         ax: object = None,
-        black_edges = False
+        black_edges = False,
+        title = ""
     ) -> None:
         """
         Displays the created topology using `nx.spring_layout`
@@ -904,7 +905,7 @@ class Topology:
                 for label in unique_labels
             ]
             ax.legend(handles=handles, title="Edge Labels", loc="upper left")
-        # ax.set_title("Network Topology with Edge Groups Colored")
+        ax.set_title(title)
 
         if ax is None:
             plt.show()

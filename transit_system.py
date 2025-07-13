@@ -112,6 +112,7 @@ class TransitSystem:
                 "total_avg_waiting_time": None,
                 "total_avg_average_stranded_count": None,
                 "served_passengers": 0,
+                "vehicle_occupancy_rate": [],
                 **{
                     f"served_passengers_{route_id}_{is_reversed}": 0
                     for route_id in self.route_ids
@@ -237,6 +238,7 @@ class TransitSystem:
                 self.report[time][f"total_done_buses_{bus.service_route}_{bus.reversed}"] += 1
                 self.report[time]["served_passengers"] += bus.num_passengers_served
                 self.report[time][f"served_passengers_{bus.service_route}_{bus.reversed}"] += bus.num_passengers_served
+                self.report[time]["vehicle_occupancy_rate"].append(bus.num_passengers_served)
 
         for bus in to_drop:
             if bus in self.buses:

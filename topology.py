@@ -882,7 +882,7 @@ class Topology:
                         edgelist=edges_in_group,
                         edge_color=label_color_map[label],
                         width=2,
-                        label=label,
+                        # label=label,
                         ax=ax,
                     )
 

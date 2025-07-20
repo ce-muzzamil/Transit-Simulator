@@ -852,8 +852,15 @@ class Topology:
         unique_labels = sorted(
             set(data["label"] for _, _, data in self.topology.edges(data=True))
         )
-        colors = plt.get_cmap("tab10", len(unique_labels))
-        label_color_map = {label: colors(i) for i, label in enumerate(unique_labels)}
+        # colors = plt.get_cmap("tab10", len(unique_labels))
+        colors = [
+                'b', 'g', 'r', 'c', 'm', 'y', 'k', 'w',
+                'orange', 'purple', 'lime', 'teal', 'navy', 'gold',
+                'indigo', 'salmon', 'chocolate', 'darkgreen',
+                'deepskyblue', 'crimson'
+            ]
+        # label_color_map = {label: colors(i) for i, label in enumerate(unique_labels)}
+        label_color_map = {label: colors[i] for i, label in enumerate(unique_labels)}
         pos = nx.spring_layout(self.topology, seed=self.seed)
 
         nx.draw(
@@ -875,14 +882,14 @@ class Topology:
                         for u, v, data in self.topology.edges(data=True)
                         if data["label"] == label
                     ]
-
+                    
                     nx.draw_networkx_edges(
                         self.topology,
                         pos,
                         edgelist=edges_in_group,
                         edge_color=label_color_map[label],
                         width=2,
-                        # label=label,
+                        label=label,
                         ax=ax,
                     )
 

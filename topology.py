@@ -868,7 +868,7 @@ class Topology:
 
         if not black_edges:
             if show_label is None:
-                labeled = []
+                labeled = set()
                 for label in unique_labels:
                     
                     # edges_in_group = [
@@ -877,13 +877,12 @@ class Topology:
                     #     if data["label"] == label
                     # ]
 
-                    edges_in_group = []
+                    edges_in_group = set()
                     for u, v, data in self.topology.edges(data=True):
                         if data["label"] == label:
-                            if (u, v) not in labeled:
-                                edges_in_group.append((u, v))
-                                labeled.append((u, v))
-                                # labeled.append((v, u))
+                            if (u, v) not in labeled and (v, u) not in labeled:
+                                edges_in_group.add((u, v))
+                                labeled.add((u, v))
 
                     nx.draw_networkx_edges(
                         self.topology,

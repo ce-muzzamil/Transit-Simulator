@@ -869,7 +869,6 @@ class Topology:
         if not black_edges:
             if show_label is None:
                 for label in unique_labels:
-                    
                     edges_in_group = [
                         (u, v)
                         for u, v, data in self.topology.edges(data=True)
@@ -880,7 +879,7 @@ class Topology:
                         self.topology,
                         pos,
                         edgelist=edges_in_group,
-                        edge_color=label_color_map[label],
+                        edge_color='r',#label_color_map[label],
                         width=2,
                         label=label,
                         ax=ax,

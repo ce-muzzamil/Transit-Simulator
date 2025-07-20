@@ -894,6 +894,9 @@ class Topology:
                         label=label,
                         ax=ax,
                     )
+                    nx.draw_networkx_edge_labels(self.topology, 
+                                                 pos, 
+                                                 edge_labels={(u, v): d["label"] for u, v, d in self.topology.edges(data=True)})
             else:
                 label = show_label
                 edges_in_group = [

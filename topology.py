@@ -849,7 +849,7 @@ class Topology:
         if ax is None:
             ax = plt.subplot(1, 1, 1)
 
-        unique_labels = list(
+        unique_labels = sorted(
             set(data["label"] for _, _, data in self.topology.edges(data=True))
         )
         colors = plt.get_cmap("tab10", len(unique_labels))
@@ -869,7 +869,7 @@ class Topology:
         if not black_edges:
             if show_label is None:
                 for label in unique_labels:
-                    
+
                     edges_in_group = [
                         (u, v)
                         for u, v, data in self.topology.edges(data=True)

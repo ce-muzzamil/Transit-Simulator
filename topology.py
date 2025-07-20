@@ -841,6 +841,7 @@ class Topology:
         black_edges = False,
         title = "",
         title_font=8,
+        show_legends=True,
     ) -> None:
         """
         Displays the created topology using `nx.spring_layout`
@@ -867,12 +868,22 @@ class Topology:
 
         if not black_edges:
             if show_label is None:
+                labeled = []
+                edges_in_group = []
+
                 for label in unique_labels:
-                    edges_in_group = [
-                        (u, v)
-                        for u, v, data in self.topology.edges(data=True)
-                        if data["label"] == label
-                    ]
+                    # edges_in_group = [
+                    #     (u, v)
+                    #     for u, v, data in self.topology.edges(data=True)
+                    #     if data["label"] == label
+                    # ]
+
+                    for u, v, data in self.topology.edges(data=True):
+                        if data["label"] == label:
+                            if (u, v) not in labeled:
+                                edges_in_group.append((u, v))
+                                labeled.append((u, v))
+                                labeled.append((v, u))
 
                     nx.draw_networkx_edges(
                         self.topology,
@@ -890,7 +901,7 @@ class Topology:
                     for u, v, data in self.topology.edges(data=True)
                     if data["label"] == label
                 ]
-
+                
                 nx.draw_networkx_edges(
                     self.topology,
                     pos,
@@ -900,12 +911,12 @@ class Topology:
                     label=label,
                     ax=ax,
                 )
-
-            handles = [
-                plt.Line2D([0], [0], color=label_color_map[label], lw=2, label=label)
-                for label in unique_labels
-            ]
-            ax.legend(handles=handles, title="Edge Labels", loc="upper left")
+            if show_legends:
+                handles = [
+                    plt.Line2D([0], [0], color=label_color_map[label], lw=2, label=label)
+                    for label in unique_labels
+                ]
+                ax.legend(handles=handles, title="Edge Labels", loc="upper left")
         ax.set_title(title, fontsize=title_font)
 
         if ax is None:

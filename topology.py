@@ -869,15 +869,15 @@ class Topology:
         if not black_edges:
             if show_label is None:
                 labeled = []
-                edges_in_group = []
-
                 for label in unique_labels:
+                    
                     # edges_in_group = [
                     #     (u, v)
                     #     for u, v, data in self.topology.edges(data=True)
                     #     if data["label"] == label
                     # ]
-
+                    
+                    edges_in_group = []
                     for u, v, data in self.topology.edges(data=True):
                         if data["label"] == label:
                             if (u, v) not in labeled:

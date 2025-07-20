@@ -856,33 +856,25 @@ class Topology:
         label_color_map = {label: colors(i) for i, label in enumerate(unique_labels)}
         pos = nx.spring_layout(self.topology, seed=self.seed)
 
-        nx.draw(
-            self.topology,
-            pos,
-            with_labels=with_labels,
-            node_color=node_color,
-            node_size=node_size,
-            font_size=font_size,
-            ax=ax,
-        )
+        # nx.draw(
+        #     self.topology,
+        #     pos,
+        #     with_labels=with_labels,
+        #     node_color=node_color,
+        #     node_size=node_size,
+        #     font_size=font_size,
+        #     ax=ax,
+        # )
 
         if not black_edges:
             if show_label is None:
-                labeled = set()
                 for label in unique_labels:
                     
-                    # edges_in_group = [
-                    #     (u, v)
-                    #     for u, v, data in self.topology.edges(data=True)
-                    #     if data["label"] == label
-                    # ]
-
-                    edges_in_group = set()
-                    for u, v, data in self.topology.edges(data=True):
-                        if data["label"] == label:
-                            if (u, v) not in labeled and (v, u) not in labeled:
-                                edges_in_group.add((u, v))
-                                labeled.add((u, v))
+                    edges_in_group = [
+                        (u, v)
+                        for u, v, data in self.topology.edges(data=True)
+                        if data["label"] == label
+                    ]
 
                     nx.draw_networkx_edges(
                         self.topology,

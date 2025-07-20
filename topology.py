@@ -876,14 +876,14 @@ class Topology:
                     #     for u, v, data in self.topology.edges(data=True)
                     #     if data["label"] == label
                     # ]
-                    
+
                     edges_in_group = []
                     for u, v, data in self.topology.edges(data=True):
                         if data["label"] == label:
                             if (u, v) not in labeled:
                                 edges_in_group.append((u, v))
                                 labeled.append((u, v))
-                                labeled.append((v, u))
+                                # labeled.append((v, u))
 
                     nx.draw_networkx_edges(
                         self.topology,

@@ -854,9 +854,9 @@ class Topology:
         )
         # colors = plt.get_cmap("tab10", len(unique_labels))
         colors = [
-                'b', 'g', 'r', 'c', 'm', 'y', 'k', 'w',
-                'orange', 'purple', 'lime', 'teal', 'navy', 'gold',
-                'indigo', 'salmon', 'chocolate', 'darkgreen',
+                'navy', 'darkgreen', 'y', 'r', 'c', 'm', 'k', 'w',
+                'orange', 'purple', 'lime', 'teal', 'b', 'gold',
+                'indigo', 'salmon', 'chocolate', 'g',
                 'deepskyblue', 'crimson'
             ]
         # label_color_map = {label: colors(i) for i, label in enumerate(unique_labels)}

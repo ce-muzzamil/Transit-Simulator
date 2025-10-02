@@ -576,7 +576,6 @@ def ppo_update(
             gae_imm = delta_imm + _gamma_imm * lam * next_non_terminal * gae_imm
             advs_imm.insert(0, gae_imm)
             returns_imm.insert(0, gae_imm + value_buf[agent_id][t][0])
-
             next_value_del = 0.0 if t == T - 1 else value_buf[agent_id][t + 1][1]
 
             if action_buf[agent_id][t] == 0:
